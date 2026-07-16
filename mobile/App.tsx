@@ -1228,32 +1228,34 @@ export default function App() {
         </ScrollView>
       </View>
 
-      {/* FIXED BOTTOM NAVIGATION BAR (Placed Outside ScrollView to prevent ANY overlapping!) */}
-      <View style={styles.bottomTabBar}>
-        {[
-          { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
-          { id: 'arena', label: 'Arena', icon: Award },
-          { id: 'tricks', label: 'Tricks', icon: BookOpen },
-          { id: 'settings', label: 'Settings', icon: SettingsIcon }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={styles.tabBarBtn}
-              onPress={() => {
-                Vibration.vibrate(10);
-                setActiveTab(tab.id as any);
-              }}
-            >
-              <Icon size={20} color={active ? 'rgb(139, 92, 246)' : '#9ca3af'} />
-              <Text style={[styles.tabBarBtnText, active && styles.tabBarBtnTextActive]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* FLOATING BOTTOM NAVIGATION BAR - wrapper approach avoids absolute positioning issues */}
+      <View style={styles.bottomTabBarWrapper}>
+        <View style={styles.bottomTabBar}>
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
+            { id: 'arena', label: 'Arena', icon: Award },
+            { id: 'tricks', label: 'Tricks', icon: BookOpen },
+            { id: 'settings', label: 'Settings', icon: SettingsIcon }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={styles.tabBarBtn}
+                onPress={() => {
+                  Vibration.vibrate(10);
+                  setActiveTab(tab.id as any);
+                }}
+              >
+                <Icon size={20} color={active ? 'rgb(139, 92, 246)' : '#9ca3af'} />
+                <Text style={[styles.tabBarBtnText, active && styles.tabBarBtnTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* INTERACTIVE TRICKS DRILLS OVERLAY MODAL */}
@@ -1554,7 +1556,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 120, // Increased bottom padding to slide content above floating dock
+    paddingBottom: 16,
   },
   tabWrapper: {
     gap: 16,
@@ -2086,22 +2088,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 13,
   },
+  bottomTabBarWrapper: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    backgroundColor: '#0d0d12',
+  },
   bottomTabBar: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 28 : 16, // Clear iOS Home Indicator notch overlaps!
-    left: 16,
-    right: 16,
-    backgroundColor: 'rgba(19, 19, 28, 0.95)',
+    backgroundColor: 'rgba(19, 19, 28, 0.97)',
     borderWidth: 1,
     borderColor: '#1f1f2e',
     borderRadius: 24,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 12,
+    paddingVertical: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 8,
   },
   tabBarBtn: {

@@ -48,7 +48,7 @@ function ArenaContent() {
   // Time logging details
   const sessionStartTime = useRef<number>(0);
   const questionStartTime = useRef<number>(0);
-  const timerInterval = useRef<NodeJS.Timeout | null>(null);
+  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Load user settings on mount

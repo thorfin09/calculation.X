@@ -1,0 +1,56 @@
+{
+  "users": {
+    "mental athlete": {
+      "username": "Mental Athlete",
+      "password": "",
+      "dailyGoalMinutes": 10,
+      "soundEnabled": true,
+      "sessions": [
+        {
+          "durationSeconds": 120,
+          "operation": "addition",
+          "correctCount": 0,
+          "totalQuestions": 0,
+          "averageTimePerQuestionMs": 0,
+          "id": "7b79ycz",
+          "timestamp": "2026-07-16T17:28:41.131Z"
+        },
+        {
+          "durationSeconds": 120,
+          "operation": "addition",
+          "correctCount": 0,
+          "totalQuestions": 0,
+          "averageTimePerQuestionMs": 0,
+          "id": "0er7l1v",
+          "timestamp": "2026-07-16T17:28:41.155Z"
+        },
+        {
+          "durationSeconds": 120,
+          "operation": "addition",
+          "correctCount": 0,
+          "totalQuestions": 0,
+          "averageTimePerQuestionMs": 0,
+          "id": "elvzr0a",
+          "timestamp": "2026-07-16T17:35:53.361Z"
+        },
+        {
+          "durationSeconds": 120,
+          "operation": "addition",
+          "correctCount": 0,
+          "totalQuestions": 0,
+          "averageTimePerQuestionMs": 0,
+          "id": "141dhst",
+          "timestamp": "2026-07-16T17:35:53.389Z"
+        }
+      ],
+      "dailyProgress": {
+        "2026-07-16": {
+          "date": "2026-07-16",
+          "minutesSpent": 8,
+          "goalAchieved": false
+        }
+      },
+      "mistakes": []
+    }
+  }
+}

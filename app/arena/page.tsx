@@ -827,6 +827,7 @@ function ArenaContent() {
               <input
                 ref={inputRef}
                 type="text"
+                inputMode="none"
                 className={`${styles.answerInput} ${feedback === 'correct' ? styles.answerInputCorrect : feedback === 'incorrect' ? styles.answerInputIncorrect : ''}`}
                 value={userAnswer}
                 onChange={(e) => handleInputChange(e.target.value)}

@@ -361,3 +361,49 @@
   color: hsl(var(--accent-error));
   text-decoration: line-through;
 }
+
+/* Mobile Responsiveness & Size Shrink Opts */
+@media (max-width: 480px) {
+  .equation {
+    font-size: 2.4rem !important;
+    letter-spacing: -0.5px;
+  }
+  
+  .answerInput {
+    font-size: 1.6rem !important;
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
+    max-width: 180px;
+  }
+  
+  .arenaCard {
+    padding: 16px !important;
+    min-height: 380px !important;
+  }
+  
+  .arenaHeader {
+    margin-bottom: 12px !important;
+  }
+  
+  .timer {
+    font-size: 1.4rem !important;
+  }
+  
+  .streakFire {
+    padding: 4px 10px !important;
+    font-size: 0.85rem !important;
+  }
+  
+  .keypad {
+    max-width: 280px !important;
+    gap: 8px !important;
+    margin-top: 16px !important;
+  }
+  
+  .key {
+    padding: 10px !important;
+    font-size: 1.1rem !important;
+    border-radius: 8px !important;
+  }
+}
+

@@ -42,13 +42,47 @@ import {
   VolumeX,
   Play,
   Check,
-  LogOut
+  LogOut,
+  ChevronRight,
+  TrendingUp,
+  Brain
 } from 'lucide-react-native';
 import { API } from './lib/api';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-// Operations and difficulty presets
+// Vedic tricks metadata
+const TRICKS = [
+  {
+    id: 'squares_5',
+    title: 'Squaring Ending in 5',
+    desc: 'Multiply the first digit n by (n + 1) and append 25 at the end.',
+    example: 'e.g., 65² = 6 × 7 = 42 → append 25 → 4225',
+    op: 'squares_5'
+  },
+  {
+    id: 'near_100',
+    title: 'Multiplication near 100',
+    desc: 'Add cross differences from base 100, then append product of differences.',
+    example: 'e.g., 96 × 97 → (96 - 3) = 93 → append (4 × 3) = 9312',
+    op: 'near_100'
+  },
+  {
+    id: 'eleven_mult',
+    title: 'Multiplying by 11',
+    desc: 'Add adjacent digits of the number and sandwich them in between.',
+    example: 'e.g., 43 × 11 → 4, (4+3), 3 → 473',
+    op: 'eleven_mult'
+  },
+  {
+    id: 'fraction_tables',
+    title: 'Fraction to Percentage conversion',
+    desc: 'Instantly convert key fractions to round percentages for fast approximations.',
+    example: 'e.g., 1/8 = 12.5%, 5/6 = 83.3%',
+    op: 'fractions'
+  }
+];
+
 const OPERATIONS = [
   { id: 'addition', val: '+' },
   { id: 'subtraction', val: '-' },
@@ -70,11 +104,12 @@ export default function App() {
   const [username, setUsername] = useState<string>('Guest');
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
   
-  // Form states
+  // Login input states
   const [loginInput, setLoginInput] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
+  
+  // Registration input states
   const [signupUsername, setSignupUsername] = useState<string>('');
   const [signupEmail, setSignupEmail] = useState<string>('');
   const [signupPhone, setSignupPhone] = useState<string>('');
@@ -88,19 +123,18 @@ export default function App() {
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
 
   // Settings states
-  const [settingsName, setSettingsName] = useState<string>('');
   const [settingsGoal, setSettingsGoal] = useState<number>(10);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [savingSettings, setSavingSettings] = useState<boolean>(false);
 
-  // Arena setup states
+  // Arena states
   const [drillMode, setDrillMode] = useState<'sprint' | 'workout' | 'mistakes'>('sprint');
   const [chosenOp, setChosenOp] = useState<string>('addition');
   const [chosenDiff, setChosenDiff] = useState<string>('easy');
   const [timeLimit, setTimeLimit] = useState<number>(120);
   const [mistakesList, setMistakesList] = useState<any[]>([]);
 
-  // Active workout states
+  // Active training states
   const [arenaState, setArenaState] = useState<'config' | 'active' | 'results'>('config');
   const [secondsLeft, setSecondsLeft] = useState<number>(120);
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
@@ -109,24 +143,25 @@ export default function App() {
   const [solvedCount, setSolvedCount] = useState<number>(0);
   const [correctCount, setCorrectCount] = useState<number>(0);
   const [workoutPhase, setWorkoutPhase] = useState<number>(1);
-  const [streak, setStreak] = useState<number>(0);
   const [maxStreak, setMaxStreak] = useState<number>(0);
+  const [streak, setStreak] = useState<number>(0);
   const [feedback, setFeedback] = useState<'none' | 'correct' | 'incorrect'>('none');
 
-  // References
+  // Tricks practice state
+  const [activeTrickPractice, setActiveTrickPractice] = useState<any>(null);
+  const [showTrickModal, setShowTrickModal] = useState<boolean>(false);
+
   const sessionStartTime = useRef<number>(0);
   const questionStartTime = useRef<number>(0);
   const timerInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Load auth on mount
+  // Fetch stats on login changes
   useEffect(() => {
-    // Check if user credentials exist in local storage mock (React Native has AsyncStorage,
-    // but for simplicity we will simulate session caching or default to Guest).
     fetchStats();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, username]);
 
   const fetchStats = async () => {
-    if (!isLoggedIn) {
+    if (!isLoggedIn || username === 'Guest') {
       setDashboardStats(null);
       return;
     }
@@ -134,11 +169,10 @@ export default function App() {
     try {
       const data = await API.getDashboardStats(username);
       setDashboardStats(data);
-      setSettingsName(data.user?.name || username);
       setSettingsGoal(data.user?.dailyGoalMinutes || 10);
       setSoundEnabled(data.user?.soundEnabled !== false);
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load dashboard metrics:', e);
     } finally {
       setLoadingStats(false);
     }
@@ -147,6 +181,7 @@ export default function App() {
   const handleLogin = async () => {
     if (!loginInput.trim() || !loginPassword) return;
     setAuthError('');
+    setAuthSuccess('');
     try {
       const res = await API.login(loginInput.trim(), loginPassword);
       if (res.success && res.username) {
@@ -156,16 +191,17 @@ export default function App() {
         setLoginInput('');
         setLoginPassword('');
       } else {
-        setAuthError(res.error || 'Login failed.');
+        setAuthError(res.error || 'Authentication credentials not recognized.');
       }
     } catch (err: any) {
-      setAuthError(err.message || 'Verification failed.');
+      setAuthError(err.message || 'Server network authentication error.');
     }
   };
 
   const handleSignup = async () => {
     if (!signupUsername.trim() || !signupEmail.trim() || !signupPhone.trim() || !signupPassword) return;
     setAuthError('');
+    setAuthSuccess('');
     try {
       const res = await API.signup(
         signupUsername.trim(),
@@ -174,7 +210,7 @@ export default function App() {
         signupPassword
       );
       if (res.success) {
-        setAuthSuccess('Account created! Logging in...');
+        setAuthSuccess('Account created successfully! Switching to Login...');
         setLoginInput(signupUsername.trim());
         setSignupUsername('');
         setSignupEmail('');
@@ -183,23 +219,23 @@ export default function App() {
         setTimeout(() => {
           setAuthTab('signin');
           setAuthSuccess('');
-        }, 1200);
+        }, 1500);
       } else {
-        setAuthError(res.error || 'Registration failed.');
+        setAuthError(res.error || 'Sign up registration failed.');
       }
     } catch (err: any) {
-      setAuthError(err.message || 'Registration failed.');
+      setAuthError(err.message || 'Registration connection error.');
     }
   };
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to log out of your profile?',
+      'Sign Out',
+      'Are you sure you want to log out? Local records will be reset.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Logout', 
+          text: 'Sign Out', 
           style: 'destructive',
           onPress: () => {
             setIsLoggedIn(false);
@@ -212,7 +248,7 @@ export default function App() {
     );
   };
 
-  // Generation logic (Vedic calculation generator matching web)
+  // Math equations generator matching Vedic layouts
   const generateQuestion = (op: string, diff: string, phase: number = 1) => {
     let text = '';
     let correctAnswer = '';
@@ -222,7 +258,6 @@ export default function App() {
       const list = ['addition', 'subtraction', 'multiplication', 'division'];
       chosenOp = list[Math.floor(Math.random() * list.length)] || 'addition';
     } else if (op === 'mix') {
-      // Workout phases logic
       if (phase === 1) chosenOp = Math.random() > 0.5 ? 'addition' : 'subtraction';
       else if (phase === 2) chosenOp = Math.random() > 0.7 ? 'addition' : 'multiplication';
       else chosenOp = Math.random() > 0.5 ? 'squares' : 'fractions';
@@ -311,7 +346,27 @@ export default function App() {
         text = `${selection.q} to %`;
         correctAnswer = selection.a;
         break;
+
+      // Special Vedic Trick Questions Generator
+      case 'squares_5':
+        num1 = (Math.floor(Math.random() * 8) + 1) * 10 + 5; // e.g. 15, 25, 35 ... 85, 95
+        text = `${num1}²`;
+        correctAnswer = String(num1 * num1);
+        break;
       
+      case 'near_100':
+        num1 = Math.floor(Math.random() * 9) + 91; // 91 - 99
+        num2 = Math.floor(Math.random() * 9) + 91; // 91 - 99
+        text = `${num1} × ${num2}`;
+        correctAnswer = String(num1 * num2);
+        break;
+
+      case 'eleven_mult':
+        num1 = Math.floor(Math.random() * 89) + 10; // 10 - 99
+        text = `${num1} × 11`;
+        correctAnswer = String(num1 * 11);
+        break;
+
       default:
         text = '2 + 2';
         correctAnswer = '4';
@@ -320,7 +375,7 @@ export default function App() {
     return { text, correctAnswer, operation: chosenOp };
   };
 
-  // Workout initiation
+  // Launch Arena
   const startWorkout = async () => {
     setAttempts([]);
     setSolvedCount(0);
@@ -329,9 +384,9 @@ export default function App() {
     setMaxStreak(0);
     setFeedback('none');
     setUserAnswer('');
-    
+
     if (drillMode === 'workout') {
-      setTimeLimit(600); // 10 minutes
+      setTimeLimit(600); // 10 mins
       setSecondsLeft(600);
       setWorkoutPhase(1);
       setCurrentQuestion(generateQuestion('mix', chosenDiff, 1));
@@ -339,7 +394,7 @@ export default function App() {
       try {
         const data = await API.getMistakes(username);
         if (data.length === 0) {
-          Alert.alert('Perfect Profile', 'No calculation mistakes logged to review!');
+          Alert.alert('Clean Profile', 'You have no calculation errors to review!');
           return;
         }
         setMistakesList(data);
@@ -362,7 +417,6 @@ export default function App() {
     sessionStartTime.current = Date.now();
     questionStartTime.current = Date.now();
 
-    // Start timer interval
     if (timerInterval.current) clearInterval(timerInterval.current);
     timerInterval.current = setInterval(() => {
       setSecondsLeft((prev) => {
@@ -376,52 +430,44 @@ export default function App() {
     }, 1000);
   };
 
-  // Real-time input change checks (auto-submit correct answers)
+  // Real-time digit validation (Auto-submit on Correct matches)
   const handleInputChange = (val: string) => {
     setUserAnswer(val);
-
     if (!currentQuestion) return;
 
-    // Checks matching
     if (val.trim() === currentQuestion.correctAnswer) {
-      const isCorrect = true;
       const newAttempt = {
         questionText: currentQuestion.text,
         correctAnswer: currentQuestion.correctAnswer,
         userAnswer: val.trim(),
-        isCorrect,
+        isCorrect: true,
         operation: currentQuestion.operation
       };
 
-      setAttempts((prev) => [...prev, newAttempt]);
-      setSolvedCount((p) => p + 1);
-      setCorrectCount((p) => p + 1);
-      setStreak((p) => {
-        const next = p + 1;
+      setAttempts((p) => [...p, newAttempt]);
+      setSolvedCount((c) => c + 1);
+      setCorrectCount((c) => c + 1);
+      setStreak((s) => {
+        const next = s + 1;
         if (next > maxStreak) setMaxStreak(next);
         return next;
       });
       setFeedback('correct');
-
-      // Vibration indicator
       Vibration.vibrate(30);
 
-      // Auto delete if mistake practice mode
       if (drillMode === 'mistakes') {
         const currentMistake = mistakesList[0];
         if (currentMistake) {
           API.removeMistake(username, currentMistake.id).catch(console.error);
-          setMistakesList(prev => prev.slice(1));
+          setMistakesList((p) => p.slice(1));
         }
       }
 
-      // Transition after visual delays
       setTimeout(() => {
         setFeedback('none');
         setUserAnswer('');
 
         if (drillMode === 'workout') {
-          // Adjust phase based on time
           const elapsed = 600 - secondsLeft;
           let phase = 1;
           if (elapsed > 360) phase = 3;
@@ -442,14 +488,14 @@ export default function App() {
           setCurrentQuestion(generateQuestion(chosenOp, chosenDiff));
         }
         questionStartTime.current = Date.now();
-      }, 220);
+      }, 200);
     }
   };
 
-  // Trigger manual submit/incorrect entry
+  // Manual Trigger (Submit key/incorrect check)
   const handleManualSubmit = () => {
     if (!userAnswer.trim() || !currentQuestion) return;
-    
+
     const isCorrect = userAnswer.trim() === currentQuestion.correctAnswer;
     const newAttempt = {
       questionText: currentQuestion.text,
@@ -459,14 +505,13 @@ export default function App() {
       operation: currentQuestion.operation
     };
 
-    setAttempts((prev) => [...prev, newAttempt]);
-    setSolvedCount((p) => p + 1);
+    setAttempts((p) => [...p, newAttempt]);
+    setSolvedCount((c) => c + 1);
 
     if (isCorrect) {
-      // (This block is redundant due to change check, but kept as safety fallback)
-      setCorrectCount((p) => p + 1);
-      setStreak((p) => {
-        const next = p + 1;
+      setCorrectCount((c) => c + 1);
+      setStreak((s) => {
+        const next = s + 1;
         if (next > maxStreak) setMaxStreak(next);
         return next;
       });
@@ -475,18 +520,18 @@ export default function App() {
     } else {
       setStreak(0);
       setFeedback('incorrect');
-      // Vibrate longer on incorrect input
-      Vibration.vibrate([0, 80, 50, 80]);
+      Vibration.vibrate([0, 60, 40, 60]);
     }
 
     setTimeout(() => {
       setFeedback('none');
       setUserAnswer('');
+
       if (drillMode === 'workout') {
         setCurrentQuestion(generateQuestion('mix', chosenDiff, workoutPhase));
       } else if (drillMode === 'mistakes') {
         if (mistakesList.length > 1) {
-          setMistakesList(prev => prev.slice(1));
+          setMistakesList((p) => p.slice(1));
           setCurrentQuestion({
             text: mistakesList[1].questionText,
             correctAnswer: mistakesList[1].correctAnswer,
@@ -520,7 +565,7 @@ export default function App() {
         operation: a.operation
       }));
 
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || username === 'Guest') return;
 
     try {
       await API.addSession(username, {
@@ -533,15 +578,16 @@ export default function App() {
       });
       fetchStats();
     } catch (e) {
-      console.error(e);
+      console.error('Failed to log workout session details:', e);
     }
   };
 
+  // Keyboard keypad inputs mapping
   const handleKeypadPress = (key: string) => {
     if (key === 'C') {
       setUserAnswer('');
     } else if (key === '⌫') {
-      setUserAnswer((prev) => prev.slice(0, -1));
+      setUserAnswer((p) => p.slice(0, -1));
     } else if (key === '⏎') {
       handleManualSubmit();
     } else {
@@ -549,19 +595,101 @@ export default function App() {
     }
   };
 
-  // Settings Save
+  // Vedic Trick Practice Modal triggers
+  const startTrickPractice = (trick: any) => {
+    setActiveTrickPractice({
+      trick,
+      solved: 0,
+      correct: 0,
+      streak: 0,
+      maxStreak: 0,
+      currentQuestion: generateQuestion(trick.op, 'easy'),
+      userAnswer: '',
+      feedback: 'none'
+    });
+    setShowTrickModal(true);
+  };
+
+  const handleTrickKeypadPress = (key: string) => {
+    if (!activeTrickPractice) return;
+    
+    let currentAns = activeTrickPractice.userAnswer;
+    if (key === 'C') {
+      currentAns = '';
+    } else if (key === '⌫') {
+      currentAns = currentAns.slice(0, -1);
+    } else if (key === '⏎') {
+      const isCorrect = currentAns.trim() === activeTrickPractice.currentQuestion.correctAnswer;
+      const nextStreak = isCorrect ? activeTrickPractice.streak + 1 : 0;
+      const nextMaxStreak = Math.max(activeTrickPractice.maxStreak, nextStreak);
+      
+      setActiveTrickPractice((prev: any) => ({
+        ...prev,
+        solved: prev.solved + 1,
+        correct: isCorrect ? prev.correct + 1 : prev.correct,
+        streak: nextStreak,
+        maxStreak: nextMaxStreak,
+        feedback: isCorrect ? 'correct' : 'incorrect',
+        userAnswer: ''
+      }));
+
+      Vibration.vibrate(isCorrect ? 30 : [0, 60, 40, 60]);
+
+      setTimeout(() => {
+        setActiveTrickPractice((prev: any) => ({
+          ...prev,
+          feedback: 'none',
+          currentQuestion: generateQuestion(prev.trick.op, 'easy')
+        }));
+      }, 250);
+      return;
+    } else {
+      currentAns = currentAns + key;
+    }
+
+    // Auto submit on correct values
+    if (currentAns.trim() === activeTrickPractice.currentQuestion.correctAnswer) {
+      const nextStreak = activeTrickPractice.streak + 1;
+      const nextMaxStreak = Math.max(activeTrickPractice.maxStreak, nextStreak);
+      Vibration.vibrate(30);
+
+      setActiveTrickPractice((prev: any) => ({
+        ...prev,
+        solved: prev.solved + 1,
+        correct: prev.correct + 1,
+        streak: nextStreak,
+        maxStreak: nextMaxStreak,
+        feedback: 'correct',
+        userAnswer: ''
+      }));
+
+      setTimeout(() => {
+        setActiveTrickPractice((prev: any) => ({
+          ...prev,
+          feedback: 'none',
+          currentQuestion: generateQuestion(prev.trick.op, 'easy')
+        }));
+      }, 200);
+    } else {
+      setActiveTrickPractice((prev: any) => ({
+        ...prev,
+        userAnswer: currentAns
+      }));
+    }
+  };
+
+  // Preference update
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
       await API.updateUserSettings(username, {
-        name: settingsName,
         dailyGoalMinutes: settingsGoal,
         soundEnabled: soundEnabled
       });
-      Alert.alert('Saved', 'Preferences saved successfully.');
+      Alert.alert('Settings Saved', 'Your calculation settings have been updated.');
       fetchStats();
     } catch (err) {
-      Alert.alert('Error', 'Failed to save settings.');
+      Alert.alert('Sync Error', 'Failed to save settings.');
     } finally {
       setSavingSettings(false);
     }
@@ -569,19 +697,19 @@ export default function App() {
 
   const handleClearMistakesLog = async () => {
     Alert.alert(
-      'Clear mistakes',
-      'Are you sure you want to permanently clear your mistake history?',
+      'Reset Errors Log',
+      'Are you sure you want to clear your saved calculation mistake log?',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Clear All', 
+          text: 'Reset All', 
           style: 'destructive',
           onPress: async () => {
             try {
               await API.clearMistakes(username);
-              Alert.alert('Cleared', 'Mistakes history cleared.');
+              Alert.alert('Reset Successful', 'Calculation errors database wiped.');
             } catch (err) {
-              Alert.alert('Error', 'Failed to clear mistakes.');
+              Alert.alert('Sync Error', 'Failed to clear mistakes.');
             }
           }
         }
@@ -589,16 +717,15 @@ export default function App() {
     );
   };
 
-  // Rendering Helper: format countdown timer
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const remaining = secs % 60;
     return `${mins}:${remaining < 10 ? '0' : ''}${remaining}`;
   };
 
-  // SVG Progress circle calculation helper
-  const radius = 75;
-  const strokeWidth = 14;
+  // SVG dimensions
+  const radius = 68;
+  const strokeWidth = 12;
   const circumference = 2 * Math.PI * radius;
   const percentComplete = dashboardStats ? Math.min(100, Math.round((dashboardStats.minutesToday / dashboardStats.user?.dailyGoalMinutes) * 100)) : 0;
   const strokeDashoffset = circumference * (1 - percentComplete / 100);
@@ -606,15 +733,17 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
-      
-      {/* Header Panel */}
+
+      {/* HEADER NAVBAR (Brand & Streak Flame) */}
       <View style={styles.header}>
-        <Text style={styles.logo}>calculation<Text style={{ color: 'rgb(139, 92, 246)' }}>.X</Text></Text>
+        <Text style={styles.logo}>
+          calculation<Text style={{ color: 'rgb(139, 92, 246)' }}>.X</Text>
+        </Text>
         
-        <View style={styles.headerWidgets}>
+        <View style={styles.headerRight}>
           {isLoggedIn && dashboardStats && (
-            <View style={[styles.badge, styles.streakBadge]}>
-              <Flame size={14} color="#f59e0b" fill="#f59e0b" />
+            <View style={styles.streakIndicator}>
+              <Flame size={15} color="#f59e0b" fill="#f59e0b" />
               <Text style={styles.streakText}>{dashboardStats.currentStreak}d</Text>
             </View>
           )}
@@ -631,69 +760,69 @@ export default function App() {
         </View>
       </View>
 
-      {/* Main Tab Render Block */}
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        {/* VIEW 1: DASHBOARD */}
-        {activeTab === 'dashboard' && (
-          <View style={styles.tabContent}>
-            {/* Header welcome banner */}
-            <View style={styles.welcomeBanner}>
-              <Text style={styles.welcomeTitle}>Welcome, {isLoggedIn ? username : 'Guest'}</Text>
-              <Text style={styles.welcomeSub}>
-                {isLoggedIn 
-                  ? 'Ready to sharpen your numerical speed today?'
-                  : 'Practice math drills fully open! Sign in to save statistics, tracking, and streaks.'
-                }
-              </Text>
-            </View>
+      {/* MAIN VIEW CONTENT CONTAINER */}
+      <View style={styles.contentContainer}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          
+          {/* VIEW 1: DASHBOARD TAB */}
+          {activeTab === 'dashboard' && (
+            <View style={styles.tabWrapper}>
+              
+              {/* Welcome text card */}
+              <View style={styles.welcomeCard}>
+                <Text style={styles.welcomeText}>Hello, {isLoggedIn ? username : 'Guest'}</Text>
+                <Text style={styles.welcomeSubtext}>
+                  {isLoggedIn 
+                    ? 'Invest 10 minutes today to boost your calculation speeds.'
+                    : 'Train freely in guest mode. Sign in to log errors and save session analytics!'
+                  }
+                </Text>
+              </View>
 
-            {/* Dashboard Panels */}
-            <View style={{ position: 'relative' }}>
-              {!isLoggedIn && (
-                <View style={styles.lockedOverlay}>
-                  <View style={styles.lockedCard}>
-                    <Key size={32} color="rgb(139, 92, 246)" style={{ marginBottom: 12 }} />
-                    <Text style={styles.lockedTitle}>Track Progress & Analytics</Text>
-                    <Text style={styles.lockedDesc}>
-                      Sign in to accumulate streaks, analyze operation strengths, and log calculation errors.
-                    </Text>
-                    <TouchableOpacity style={styles.lockedBtn} onPress={() => setShowLoginModal(true)}>
-                      <Text style={styles.lockedBtnText}>Sign In / Join Now</Text>
-                    </TouchableOpacity>
+              <View style={{ position: 'relative' }}>
+                {!isLoggedIn && (
+                  <View style={styles.lockOverlay}>
+                    <View style={styles.lockCard}>
+                      <Key size={30} color="rgb(139, 92, 246)" style={{ marginBottom: 12 }} />
+                      <Text style={styles.lockCardTitle}>Premium Dashboard Locked</Text>
+                      <Text style={styles.lockCardDesc}>
+                        Sign in to track progress rings, logs, mistakes reviewer, and training histories.
+                      </Text>
+                      <TouchableOpacity style={styles.lockCardBtn} onPress={() => setShowLoginModal(true)}>
+                        <Text style={styles.lockCardBtnText}>Sign In / Create Account</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              )}
+                )}
 
-              <View style={{ opacity: isLoggedIn ? 1 : 0.45 }}>
-                {/* SVG Progress Ring Card */}
-                <View style={styles.card}>
-                  <View style={styles.progressRow}>
-                    <View style={{ flex: 1, paddingRight: 16 }}>
-                      <Text style={styles.progressCardTitle}>10-Minute Focus Ring</Text>
-                      <Text style={styles.progressCardDesc}>
-                        Practice 10 minutes of calculations daily to maintain your quantitative streak!
+                <View style={{ opacity: isLoggedIn ? 1 : 0.4 }}>
+                  {/* Circular Progress Ring */}
+                  <View style={styles.ringCard}>
+                    <View style={styles.ringLeft}>
+                      <Text style={styles.ringCardTitle}>Daily Progress</Text>
+                      <Text style={styles.ringCardDesc}>
+                        Accumulate 10 minutes of math drills daily to build your quantitative memory.
                       </Text>
                       {dashboardStats && (
-                        <Text style={styles.progressRemaining}>
+                        <Text style={styles.ringTimeStats}>
                           Today: {dashboardStats.minutesToday}m / {dashboardStats.user?.dailyGoalMinutes}m
                         </Text>
                       )}
                     </View>
-                    
-                    <View style={styles.ringContainer}>
-                      <Svg width="160" height="160" style={{ transform: [{ rotate: '-90deg' }] }}>
+
+                    <View style={styles.ringOuter}>
+                      <Svg width="140" height="140" style={styles.ringSvg}>
                         <Circle
-                          cx="80"
-                          cy="80"
+                          cx="70"
+                          cy="70"
                           r={radius}
-                          stroke="#1f1f2e"
+                          stroke="#1a1a26"
                           strokeWidth={strokeWidth}
                           fill="transparent"
                         />
                         <Circle
-                          cx="80"
-                          cy="80"
+                          cx="70"
+                          cy="70"
                           r={radius}
                           stroke="rgb(139, 92, 246)"
                           strokeWidth={strokeWidth}
@@ -703,330 +832,352 @@ export default function App() {
                           strokeLinecap="round"
                         />
                       </Svg>
-                      <View style={styles.ringTextContainer}>
+                      <View style={styles.ringTextOverlay}>
                         <Text style={styles.ringPercentText}>{percentComplete}%</Text>
                       </View>
                     </View>
                   </View>
-                </View>
 
-                {/* Dashboard Stats Metrics Grid */}
-                <View style={styles.statsGrid}>
-                  <View style={styles.statMiniCard}>
-                    <Target size={20} color="rgb(139, 92, 246)" />
-                    <Text style={styles.statValText}>{dashboardStats?.averageAccuracy || 0}%</Text>
-                    <Text style={styles.statLabelText}>Accuracy</Text>
+                  {/* Solved metrics grid */}
+                  <View style={styles.metricsGrid}>
+                    <View style={styles.metricCard}>
+                      <Target size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                      <Text style={styles.metricValue}>{dashboardStats?.averageAccuracy || 0}%</Text>
+                      <Text style={styles.metricLabel}>Accuracy</Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                      <Zap size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                      <Text style={styles.metricValue}>{dashboardStats?.averageSpeed || 0} Q/m</Text>
+                      <Text style={styles.metricLabel}>Speed</Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                      <CheckCircle2 size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                      <Text style={styles.metricValue}>{dashboardStats?.totalCorrect || 0}</Text>
+                      <Text style={styles.metricLabel}>Solved</Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                      <Clock size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                      <Text style={styles.metricValue}>{dashboardStats?.totalTimeMin || 0}m</Text>
+                      <Text style={styles.metricLabel}>Trained</Text>
+                    </View>
                   </View>
-                  <View style={styles.statMiniCard}>
-                    <Zap size={20} color="rgb(139, 92, 246)" />
-                    <Text style={styles.statValText}>{dashboardStats?.averageSpeed || 0} Q/m</Text>
-                    <Text style={styles.statLabelText}>Speed</Text>
-                  </View>
-                  <View style={styles.statMiniCard}>
-                    <CheckCircle2 size={20} color="rgb(139, 92, 246)" />
-                    <Text style={styles.statValText}>{dashboardStats?.totalCorrect || 0}</Text>
-                    <Text style={styles.statLabelText}>Solved</Text>
-                  </View>
-                  <View style={styles.statMiniCard}>
-                    <Clock size={20} color="rgb(139, 92, 246)" />
-                    <Text style={styles.statValText}>{dashboardStats?.totalTimeMin || 0}m</Text>
-                    <Text style={styles.statLabelText}>Trained</Text>
-                  </View>
-                </View>
 
-                {/* Streaks active calendar preview */}
-                <View style={styles.card}>
-                  <Text style={styles.cardSectionTitle}>Recent Workouts</Text>
-                  {dashboardStats && dashboardStats.recentSessions?.length > 0 ? (
-                    dashboardStats.recentSessions.map((session: any, idx: number) => (
-                      <View key={session.id || idx} style={styles.workoutItem}>
-                        <View>
-                          <Text style={styles.workoutTitle}>{session.operation} session</Text>
-                          <Text style={styles.workoutDate}>Solved {session.totalQuestions}</Text>
+                  {/* Recent Workouts list */}
+                  <View style={styles.panelCard}>
+                    <Text style={styles.panelCardTitle}>Recent Session History</Text>
+                    {dashboardStats && dashboardStats.recentSessions?.length > 0 ? (
+                      dashboardStats.recentSessions.map((session: any, idx: number) => (
+                        <View key={session.id || idx} style={styles.sessionListItem}>
+                          <View>
+                            <Text style={styles.sessionName}>{session.operation} session</Text>
+                            <Text style={styles.sessionDate}>Solved {session.totalQuestions} questions</Text>
+                          </View>
+                          <Text style={styles.sessionAcc}>{Math.round((session.correctCount / session.totalQuestions) * 100)}% Acc</Text>
                         </View>
-                        <Text style={styles.workoutAccuracy}>{Math.round((session.correctCount / session.totalQuestions) * 100)}% Acc</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={styles.emptyText}>No workout logs stored yet.</Text>
-                  )}
+                      ))
+                    ) : (
+                      <Text style={styles.emptySessionText}>No logged session history found.</Text>
+                    )}
+                  </View>
                 </View>
               </View>
+
             </View>
-          </View>
-        )}
+          )}
 
-        {/* VIEW 2: ARENA SCREEN */}
-        {activeTab === 'arena' && (
-          <View style={styles.tabContent}>
-            
-            {/* Config Screen Setup */}
-            {arenaState === 'config' && (
-              <View style={styles.card}>
-                <Text style={styles.cardHeaderTitle}>Choose Workout Drill</Text>
-                
-                {/* Mode tabs */}
-                <View style={styles.modeTabs}>
-                  {['sprint', 'workout', 'mistakes'].map((mode) => (
-                    <TouchableOpacity
-                      key={mode}
-                      onPress={() => {
-                        if (mode === 'mistakes' && !isLoggedIn) {
-                          Alert.alert('Sign In Required', 'Login to review saved mistakes.');
-                          return;
-                        }
-                        setDrillMode(mode as any);
-                      }}
-                      style={[styles.modeTabButton, drillMode === mode && styles.modeTabActive]}
-                    >
-                      <Text style={[styles.modeTabText, drillMode === mode && styles.modeTabTextActive]}>
-                        {mode === 'mistakes' && !isLoggedIn ? 'Mistakes 🔒' : mode}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+          {/* VIEW 2: ARENA TAB */}
+          {activeTab === 'arena' && (
+            <View style={styles.tabWrapper}>
+              
+              {/* Configuration setups */}
+              {arenaState === 'config' && (
+                <View style={styles.panelCard}>
+                  <Text style={styles.panelTitle}>Choose Drill Mode</Text>
 
-                {drillMode === 'sprint' && (
-                  <View style={{ gap: 16 }}>
-                    <Text style={styles.fieldLabel}>Select Operation</Text>
-                    <View style={styles.operationGrid}>
-                      {OPERATIONS.map((op) => (
-                        <TouchableOpacity
-                          key={op.id}
-                          onPress={() => setChosenOp(op.id)}
-                          style={[styles.opSelector, chosenOp === op.id && styles.opSelectorActive]}
-                        >
-                          <Text style={[styles.opSelectorText, chosenOp === op.id && styles.opSelectorTextActive]}>
-                            {op.val}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    <Text style={styles.fieldLabel}>Difficulty</Text>
-                    <View style={styles.diffTabs}>
-                      {DIFFICULTIES.map((diff) => (
-                        <TouchableOpacity
-                          key={diff}
-                          onPress={() => setChosenDiff(diff)}
-                          style={[styles.diffTabButton, chosenDiff === diff && styles.diffTabActive]}
-                        >
-                          <Text style={[styles.diffTabText, chosenDiff === diff && styles.diffTabTextActive]}>
-                            {diff}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
-
-                {drillMode === 'workout' && (
-                  <Text style={styles.descText}>
-                    Starts a structured 10-Minute Daily challenge combining single digit warmups, double digit core multiplication, and fractional Vedic roots.
-                  </Text>
-                )}
-
-                {drillMode === 'mistakes' && (
-                  <Text style={styles.descText}>
-                    Review logged arithmetic mistakes saved in your profile. Correct answers will isolate and remove them from database.
-                  </Text>
-                )}
-
-                <TouchableOpacity style={styles.startBtn} onPress={startWorkout}>
-                  <Text style={styles.startBtnText}>Start Drill</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Arena Active workout state */}
-            {arenaState === 'active' && currentQuestion && (
-              <View style={[styles.card, styles.arenaActiveCard]}>
-                <View style={styles.arenaHeaderRow}>
-                  <View>
-                    <Text style={styles.arenaSubtitle}>{drillMode} drill</Text>
-                    <Text style={[styles.arenaTimer, secondsLeft <= 15 && styles.timerAlert]}>
-                      {formatTime(secondsLeft)}
-                    </Text>
-                  </View>
-                  
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.statsLabel}>Solved: {solvedCount}</Text>
-                    <Text style={styles.statsLabel}>
-                      Accuracy: {solvedCount > 0 ? Math.round((correctCount / solvedCount) * 100) : 100}%
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Equation box display */}
-                <View style={styles.equationContainer}>
-                  <Text style={[
-                    styles.equationText,
-                    feedback === 'correct' && styles.textCorrect,
-                    feedback === 'incorrect' && styles.textIncorrect
-                  ]}>
-                    {currentQuestion.text} =
-                  </Text>
-                  
-                  {/* Virtual Input Display Box */}
-                  <View style={[
-                    styles.inputFieldBox,
-                    feedback === 'correct' && styles.fieldCorrect,
-                    feedback === 'incorrect' && styles.fieldIncorrect
-                  ]}>
-                    <Text style={styles.inputFieldText}>{userAnswer || '?'}</Text>
-                  </View>
-                </View>
-
-                {/* Mobile Customized Virtual Keypad */}
-                <View style={styles.keypadContainer}>
-                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '0', '.'].map((key) => (
-                    <TouchableOpacity
-                      key={key}
-                      onPress={() => handleKeypadPress(key)}
-                      style={styles.keypadKey}
-                    >
-                      <Text style={styles.keypadKeyText}>{key}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity onPress={() => handleKeypadPress('C')} style={[styles.keypadKey, styles.keypadSpecial]}>
-                    <Text style={styles.keypadKeyText}>C</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleKeypadPress('⌫')} style={[styles.keypadKey, styles.keypadSpecial]}>
-                    <Text style={styles.keypadKeyText}>⌫</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleKeypadPress('⏎')} style={[styles.keypadKey, styles.keypadSubmit]}>
-                    <Text style={[styles.keypadKeyText, { color: '#0d0d12' }]}>⏎</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Workout session completed results */}
-            {arenaState === 'results' && (
-              <View style={styles.card}>
-                <CheckCircle2 size={48} color="#10b981" style={{ alignSelf: 'center', marginBottom: 12 }} />
-                <Text style={styles.resultsTitle}>Workout Complete!</Text>
-                
-                <View style={styles.resultsGrid}>
-                  <View style={styles.resultCol}>
-                    <Text style={styles.resultValue}>{correctCount} / {solvedCount}</Text>
-                    <Text style={styles.resultLabel}>Correct</Text>
-                  </View>
-                  <View style={styles.resultCol}>
-                    <Text style={[styles.resultValue, { color: '#10b981' }]}>
-                      {solvedCount > 0 ? Math.round((correctCount / solvedCount) * 100) : 0}%
-                    </Text>
-                    <Text style={styles.resultLabel}>Accuracy</Text>
-                  </View>
-                  <View style={styles.resultCol}>
-                    <Text style={[styles.resultValue, { color: '#f59e0b' }]}>{maxStreak} 🔥</Text>
-                    <Text style={styles.resultLabel}>Streak</Text>
-                  </View>
-                </View>
-
-                {attempts.filter(a => !a.isCorrect).length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={styles.mistakesHeading}>Mistakes review ({attempts.filter(a => !a.isCorrect).length})</Text>
-                    {attempts.filter(a => !a.isCorrect).map((attempt, idx) => (
-                      <View key={idx} style={styles.mistakeRow}>
-                        <Text style={styles.mistakeQuestion}>{attempt.questionText} = {attempt.correctAnswer}</Text>
-                        <Text style={styles.mistakeUserAnswer}>typed: {attempt.userAnswer}</Text>
-                      </View>
+                  {/* Mode select tabs */}
+                  <View style={styles.tabSelectGroup}>
+                    {['sprint', 'workout', 'mistakes'].map((mode) => (
+                      <TouchableOpacity
+                        key={mode}
+                        onPress={() => {
+                          if (mode === 'mistakes' && !isLoggedIn) {
+                            Alert.alert('Verification Required', 'Sign in to review saved calculation errors.');
+                            return;
+                          }
+                          setDrillMode(mode as any);
+                        }}
+                        style={[styles.tabSelectBtn, drillMode === mode && styles.tabSelectBtnActive]}
+                      >
+                        <Text style={[styles.tabSelectText, drillMode === mode && styles.tabSelectTextActive]}>
+                          {mode === 'mistakes' && !isLoggedIn ? 'Mistakes 🔒' : mode}
+                        </Text>
+                      </TouchableOpacity>
                     ))}
                   </View>
-                )}
 
-                <TouchableOpacity style={styles.startBtn} onPress={() => setArenaState('config')}>
-                  <Text style={styles.startBtnText}>New Workout</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
+                  {drillMode === 'sprint' && (
+                    <View style={{ gap: 16 }}>
+                      <Text style={styles.fieldSectionLabel}>Select Operation</Text>
+                      <View style={styles.opSelectionGrid}>
+                        {OPERATIONS.map((op) => (
+                          <TouchableOpacity
+                            key={op.id}
+                            onPress={() => setChosenOp(op.id)}
+                            style={[styles.opItem, chosenOp === op.id && styles.opItemActive]}
+                          >
+                            <Text style={[styles.opItemText, chosenOp === op.id && styles.opItemTextActive]}>
+                              {op.val}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
 
-        {/* VIEW 3: TRICKS PREVIEW */}
-        {activeTab === 'tricks' && (
-          <ScrollView style={styles.tabContent}>
-            <Text style={styles.tricksTitle}>Speed Math Shortcuts</Text>
-            
-            <View style={styles.card}>
-              <Text style={styles.trickHeader}>1. Squaring numbers ending in 5</Text>
-              <Text style={styles.trickDesc}>
-                Multiply the first digit by (first digit + 1), then append 25.
-              </Text>
-              <Text style={styles.trickExample}>e.g., 65² = 6 × 7 = 42 → 4225</Text>
-            </View>
+                      <Text style={styles.fieldSectionLabel}>Select Difficulty</Text>
+                      <View style={styles.difficultyRow}>
+                        {DIFFICULTIES.map((diff) => (
+                          <TouchableOpacity
+                            key={diff}
+                            onPress={() => setChosenDiff(diff)}
+                            style={[styles.diffBtn, chosenDiff === diff && styles.diffBtnActive]}
+                          >
+                            <Text style={[styles.diffBtnText, chosenDiff === diff && styles.diffBtnTextActive]}>
+                              {diff}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
 
-            <View style={styles.card}>
-              <Text style={styles.trickHeader}>2. Multiplying double digits near 100</Text>
-              <Text style={styles.trickDesc}>
-                Add the base difference of one number to another, then append the product of the differences.
-              </Text>
-              <Text style={styles.trickExample}>e.g., 96 × 97 → (96-3) = 93 → append (-4 × -3) 12 = 9312</Text>
-            </View>
+                  {drillMode === 'workout' && (
+                    <Text style={styles.drillDescription}>
+                      Launches a comprehensive 10-minute training block spanning multiplication matrices, Vedic divisions, and fraction percentage tables.
+                    </Text>
+                  )}
 
-            <View style={styles.card}>
-              <Text style={styles.trickHeader}>3. Percentage fraction conversion tables</Text>
-              <Text style={styles.trickDesc}>
-                Learn key percentages for rapid fraction arithmetic:
-              </Text>
-              <View style={styles.fractionRow}><Text style={styles.fractionText}>1/3 = 33.3%</Text><Text style={styles.fractionText}>2/3 = 66.6%</Text></View>
-              <View style={styles.fractionRow}><Text style={styles.fractionText}>1/6 = 16.6%</Text><Text style={styles.fractionText}>5/6 = 83.3%</Text></View>
-              <View style={styles.fractionRow}><Text style={styles.fractionText}>1/8 = 12.5%</Text><Text style={styles.fractionText}>3/8 = 37.5%</Text></View>
-            </View>
-          </ScrollView>
-        )}
+                  {drillMode === 'mistakes' && (
+                    <Text style={styles.drillDescription}>
+                      Review and correct arithmetic logs of previously failed questions. Correct solutions dynamically wipe them from your records.
+                    </Text>
+                  )}
 
-        {/* VIEW 4: SETTINGS SCREEN */}
-        {activeTab === 'settings' && (
-          <View style={styles.tabContent}>
-            <View style={styles.card}>
-              <Text style={styles.cardHeaderTitle}>Preferences</Text>
-              
-              <Text style={styles.fieldLabel}>Goal Minutes Daily</Text>
-              <View style={styles.goalCounter}>
-                <TouchableOpacity onPress={() => setSettingsGoal(p => Math.max(1, p - 1))} style={styles.counterBtn}>
-                  <Text style={styles.counterBtnText}>-</Text>
-                </TouchableOpacity>
-                <Text style={styles.counterVal}>{settingsGoal} Minutes</Text>
-                <TouchableOpacity onPress={() => setSettingsGoal(p => Math.min(60, p + 1))} style={styles.counterBtn}>
-                  <Text style={styles.counterBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.settingSwitchRow}>
-                <View>
-                  <Text style={styles.switchLabel}>Audio Tones</Text>
-                  <Text style={styles.switchDesc}>Play synthesized double beeps on correct entries.</Text>
+                  <TouchableOpacity style={styles.primaryActionBtn} onPress={startWorkout}>
+                    <Text style={styles.primaryActionBtnText}>Launch Workout</Text>
+                  </TouchableOpacity>
                 </View>
-                <Switch
-                  value={soundEnabled}
-                  onValueChange={setSoundEnabled}
-                  trackColor={{ false: '#1f1f2e', true: 'rgb(139, 92, 246)' }}
-                  thumbColor="#fff"
-                />
-              </View>
+              )}
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveSettings} disabled={savingSettings || !isLoggedIn}>
-                <Text style={styles.saveBtnText}>{savingSettings ? 'Saving...' : 'Save Preferences'}</Text>
-              </TouchableOpacity>
+              {/* Training Screen */}
+              {arenaState === 'active' && currentQuestion && (
+                <View style={[styles.panelCard, styles.arenaActivePanel]}>
+                  
+                  {/* Status columns */}
+                  <View style={styles.arenaActiveHeader}>
+                    <View>
+                      <Text style={styles.arenaHeadingLabel}>{drillMode} training</Text>
+                      <Text style={[styles.arenaCountdownText, secondsLeft <= 15 && styles.textRed]}>
+                        {formatTime(secondsLeft)}
+                      </Text>
+                    </View>
+
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.statsHeaderText}>Solved: {solvedCount}</Text>
+                      <Text style={styles.statsHeaderText}>
+                        Accuracy: {solvedCount > 0 ? Math.round((correctCount / solvedCount) * 100) : 100}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Math calculation presentation */}
+                  <View style={styles.arenaEquationWrapper}>
+                    <Text style={[
+                      styles.equationMainText,
+                      feedback === 'correct' && styles.textGreen,
+                      feedback === 'incorrect' && styles.textRed
+                    ]}>
+                      {currentQuestion.text} =
+                    </Text>
+                    
+                    <View style={[
+                      styles.equationAnswerInputBox,
+                      feedback === 'correct' && styles.borderGreen,
+                      feedback === 'incorrect' && styles.borderRed
+                    ]}>
+                      <Text style={styles.equationAnswerInputText}>{userAnswer || '?'}</Text>
+                    </View>
+                  </View>
+
+                  {/* Native Grid Keypad */}
+                  <View style={styles.keypadLayout}>
+                    {/* Row 1 */}
+                    <View style={styles.keypadRow}>
+                      {['1', '2', '3'].map(k => (
+                        <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleKeypadPress(k)}>
+                          <Text style={styles.keypadBtnText}>{k}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {/* Row 2 */}
+                    <View style={styles.keypadRow}>
+                      {['4', '5', '6'].map(k => (
+                        <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleKeypadPress(k)}>
+                          <Text style={styles.keypadBtnText}>{k}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {/* Row 3 */}
+                    <View style={styles.keypadRow}>
+                      {['7', '8', '9'].map(k => (
+                        <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleKeypadPress(k)}>
+                          <Text style={styles.keypadBtnText}>{k}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {/* Row 4 */}
+                    <View style={styles.keypadRow}>
+                      {['-', '0', '.'].map(k => (
+                        <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleKeypadPress(k)}>
+                          <Text style={styles.keypadBtnText}>{k}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {/* Row 5 Special controls */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={[styles.keypadBtn, styles.keypadSpecialBtn]} onPress={() => handleKeypadPress('C')}>
+                        <Text style={styles.keypadBtnText}>C</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.keypadBtn, styles.keypadSpecialBtn]} onPress={() => handleKeypadPress('⌫')}>
+                        <Text style={styles.keypadBtnText}>⌫</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.keypadBtn, styles.keypadSubmitBtn]} onPress={() => handleKeypadPress('⏎')}>
+                        <Text style={[styles.keypadBtnText, { color: '#0d0d12' }]}>⏎</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                </View>
+              )}
+
+              {/* Workout finished metrics report */}
+              {arenaState === 'results' && (
+                <View style={styles.panelCard}>
+                  <CheckCircle2 size={46} color="#10b981" style={{ alignSelf: 'center', marginBottom: 12 }} />
+                  <Text style={styles.resultsPanelTitle}>Session Complete!</Text>
+
+                  <View style={styles.resultsMetricGrid}>
+                    <View style={styles.resultsMetricCol}>
+                      <Text style={styles.resultsMetricValue}>{correctCount} / {solvedCount}</Text>
+                      <Text style={styles.resultsMetricLabel}>Correct</Text>
+                    </View>
+                    <View style={styles.resultsMetricCol}>
+                      <Text style={[styles.resultsMetricValue, { color: '#10b981' }]}>
+                        {solvedCount > 0 ? Math.round((correctCount / solvedCount) * 100) : 0}%
+                      </Text>
+                      <Text style={styles.resultsMetricLabel}>Accuracy</Text>
+                    </View>
+                    <View style={styles.resultsMetricCol}>
+                      <Text style={[styles.resultsMetricValue, { color: '#f59e0b' }]}>{maxStreak} 🔥</Text>
+                      <Text style={styles.resultsMetricLabel}>Max Streak</Text>
+                    </View>
+                  </View>
+
+                  {attempts.filter(a => !a.isCorrect).length > 0 && (
+                    <View style={{ marginTop: 12, marginBottom: 20 }}>
+                      <Text style={styles.mistakeBlockHeader}>Review Errors</Text>
+                      {attempts.filter(a => !a.isCorrect).map((attempt, idx) => (
+                        <View key={idx} style={styles.mistakeReviewRow}>
+                          <Text style={styles.mistakeReviewQuestion}>{attempt.questionText} = {attempt.correctAnswer}</Text>
+                          <Text style={styles.mistakeReviewWrongAns}>Entered: {attempt.userAnswer}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  <TouchableOpacity style={styles.primaryActionBtn} onPress={() => setArenaState('config')}>
+                    <Text style={styles.primaryActionBtnText}>Review Screen</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
             </View>
+          )}
 
-            {isLoggedIn && (
-              <View style={styles.card}>
-                <Text style={[styles.cardHeaderTitle, { color: '#ef4444' }]}>System Actions</Text>
-                <TouchableOpacity style={styles.dangerBtn} onPress={handleClearMistakesLog}>
-                  <Text style={styles.dangerBtnText}>Reset Mistakes Log</Text>
+          {/* VIEW 3: VEDIC SPEED TRICKS TAB */}
+          {activeTab === 'tricks' && (
+            <View style={styles.tabWrapper}>
+              <Text style={styles.tricksHeadingTitle}>Vedic Mental Speed Math</Text>
+              <Text style={styles.tricksHeadingSub}>Tap any shortcut rule to launch an interactive practice drill session!</Text>
+
+              {TRICKS.map((trick) => (
+                <TouchableOpacity 
+                  key={trick.id} 
+                  style={styles.trickOverviewCard}
+                  onPress={() => startTrickPractice(trick)}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.trickOverviewTitle}>{trick.title}</Text>
+                    <Text style={styles.trickOverviewDesc}>{trick.desc}</Text>
+                    <Text style={styles.trickOverviewExample}>{trick.example}</Text>
+                  </View>
+                  <ChevronRight size={18} color="rgb(139, 92, 246)" style={{ alignSelf: 'center' }} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* VIEW 4: SETTINGS CONFIGURATOR TAB */}
+          {activeTab === 'settings' && (
+            <View style={styles.tabWrapper}>
+              
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Preferences Configuration</Text>
+                
+                <Text style={styles.fieldSectionLabel}>Daily Focus Goal (Minutes)</Text>
+                <View style={styles.goalControllerRow}>
+                  <TouchableOpacity onPress={() => setSettingsGoal(p => Math.max(1, p - 1))} style={styles.goalBtn}>
+                    <Text style={styles.goalBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.goalValueText}>{settingsGoal} Minutes</Text>
+                  <TouchableOpacity onPress={() => setSettingsGoal(p => Math.min(60, p + 1))} style={styles.goalBtn}>
+                    <Text style={styles.goalBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.settingToggleRow}>
+                  <View>
+                    <Text style={styles.settingToggleTitle}>Haptics & Feedback</Text>
+                    <Text style={styles.settingToggleDesc}>Provide physical vibrations on correct calculations.</Text>
+                  </View>
+                  <Switch
+                    value={soundEnabled}
+                    onValueChange={setSoundEnabled}
+                    trackColor={{ false: '#1a1a26', true: 'rgb(139, 92, 246)' }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                <TouchableOpacity style={styles.primaryActionBtn} onPress={handleSaveSettings} disabled={savingSettings || !isLoggedIn}>
+                  <Text style={styles.primaryActionBtnText}>{savingSettings ? 'Saving...' : 'Save Configuration'}</Text>
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
-        )}
 
-      </ScrollView>
+              {isLoggedIn && (
+                <View style={styles.panelCard}>
+                  <Text style={[styles.panelTitle, { color: '#ef4444' }]}>Profile Clean Actions</Text>
+                  <TouchableOpacity style={styles.dangerActionBtn} onPress={handleClearMistakesLog}>
+                    <Text style={styles.dangerActionBtnText}>Reset Calculation Mistakes Database</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-      {/* FIXED BOTTOM NAVIGATION BAR */}
-      <View style={styles.bottomNav}>
+            </View>
+          )}
+
+        </ScrollView>
+      </View>
+
+      {/* FIXED BOTTOM NAVIGATION BAR (Placed Outside ScrollView to prevent ANY overlapping!) */}
+      <View style={styles.bottomTabBar}>
         {[
           { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
           { id: 'arena', label: 'Arena', icon: Award },
@@ -1038,11 +1189,14 @@ export default function App() {
           return (
             <TouchableOpacity
               key={tab.id}
-              style={styles.navButton}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={styles.tabBarBtn}
+              onPress={() => {
+                Vibration.vibrate(10);
+                setActiveTab(tab.id as any);
+              }}
             >
               <Icon size={20} color={active ? 'rgb(139, 92, 246)' : '#9ca3af'} />
-              <Text style={[styles.navButtonText, active && styles.navActiveText]}>
+              <Text style={[styles.tabBarBtnText, active && styles.tabBarBtnTextActive]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -1050,141 +1204,235 @@ export default function App() {
         })}
       </View>
 
-      {/* AUTHENTICATION OVERLAY MODAL */}
+      {/* INTERACTIVE TRICKS DRILLS OVERLAY MODAL */}
+      <Modal
+        visible={showTrickModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTrickModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          {activeTrickPractice && (
+            <View style={[styles.panelCard, styles.trickPracticeCard]}>
+              <TouchableOpacity style={styles.closeTrickModalBtn} onPress={() => setShowTrickModal(false)}>
+                <X size={20} color="#9ca3af" />
+              </TouchableOpacity>
+
+              <Text style={styles.trickPracticeTitle}>{activeTrickPractice.trick.title}</Text>
+              <Text style={styles.trickPracticeSub}>{activeTrickPractice.trick.desc}</Text>
+
+              {/* Solved Acc counter */}
+              <View style={styles.trickStatsRow}>
+                <Text style={styles.trickStatsText}>Correct: {activeTrickPractice.correct} / {activeTrickPractice.solved}</Text>
+                <Text style={styles.trickStatsText}>Streak: {activeTrickPractice.streak} 🔥</Text>
+              </View>
+
+              {/* Question display */}
+              <View style={styles.trickQuestionArea}>
+                <Text style={[
+                  styles.equationMainText,
+                  activeTrickPractice.feedback === 'correct' && styles.textGreen,
+                  activeTrickPractice.feedback === 'incorrect' && styles.textRed
+                ]}>
+                  {activeTrickPractice.currentQuestion.text} =
+                </Text>
+                <View style={[
+                  styles.equationAnswerInputBox,
+                  activeTrickPractice.feedback === 'correct' && styles.borderGreen,
+                  activeTrickPractice.feedback === 'incorrect' && styles.borderRed
+                ]}>
+                  <Text style={styles.equationAnswerInputText}>{activeTrickPractice.userAnswer || '?'}</Text>
+                </View>
+              </View>
+
+              {/* Practice Keypad */}
+              <View style={styles.keypadLayout}>
+                {/* Row 1 */}
+                <View style={styles.keypadRow}>
+                  {['1', '2', '3'].map(k => (
+                    <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleTrickKeypadPress(k)}>
+                      <Text style={styles.keypadBtnText}>{k}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Row 2 */}
+                <View style={styles.keypadRow}>
+                  {['4', '5', '6'].map(k => (
+                    <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleTrickKeypadPress(k)}>
+                      <Text style={styles.keypadBtnText}>{k}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Row 3 */}
+                <View style={styles.keypadRow}>
+                  {['7', '8', '9'].map(k => (
+                    <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleTrickKeypadPress(k)}>
+                      <Text style={styles.keypadBtnText}>{k}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Row 4 */}
+                <View style={styles.keypadRow}>
+                  {['-', '0', '.'].map(k => (
+                    <TouchableOpacity key={k} style={styles.keypadBtn} onPress={() => handleTrickKeypadPress(k)}>
+                      <Text style={styles.keypadBtnText}>{k}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Row 5 */}
+                <View style={styles.keypadRow}>
+                  <TouchableOpacity style={[styles.keypadBtn, styles.keypadSpecialBtn]} onPress={() => handleTrickKeypadPress('C')}>
+                    <Text style={styles.keypadBtnText}>C</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.keypadBtn, styles.keypadSpecialBtn]} onPress={() => handleTrickKeypadPress('⌫')}>
+                    <Text style={styles.keypadBtnText}>⌫</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.keypadBtn, styles.keypadSubmitBtn]} onPress={() => handleTrickKeypadPress('⏎')}>
+                    <Text style={[styles.keypadBtnText, { color: '#0d0d12' }]}>⏎</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* CREDENTIALS LOGIN OVERLAY MODAL */}
       <Modal
         visible={showLoginModal}
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         onRequestClose={() => setShowLoginModal(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowLoginModal(false)}>
+            <TouchableOpacity style={styles.closeLoginModalBtn} onPress={() => setShowLoginModal(false)}>
               <X size={20} color="#9ca3af" />
             </TouchableOpacity>
 
-            <View style={styles.modalTabs}>
-              <TouchableOpacity
-                onPress={() => { setAuthTab('signin'); setAuthError(''); }}
-                style={[styles.modalTabBtn, authTab === 'signin' && styles.modalTabActive]}
+            {/* Modal Tabs switcher */}
+            <View style={styles.modalTabHeader}>
+              <TouchableOpacity 
+                onPress={() => { setAuthTab('signin'); setAuthError(''); setAuthSuccess(''); }}
+                style={[styles.modalTabHeaderBtn, authTab === 'signin' && styles.modalTabHeaderBtnActive]}
               >
-                <Text style={[styles.modalTabText, authTab === 'signin' && styles.modalTabTextActive]}>Sign In</Text>
+                <Text style={[styles.modalTabHeaderText, authTab === 'signin' && styles.modalTabHeaderTextActive]}>Sign In</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { setAuthTab('signup'); setAuthError(''); }}
-                style={[styles.modalTabBtn, authTab === 'signup' && styles.modalTabActive]}
+              <TouchableOpacity 
+                onPress={() => { setAuthTab('signup'); setAuthError(''); setAuthSuccess(''); }}
+                style={[styles.modalTabHeaderBtn, authTab === 'signup' && styles.modalTabHeaderBtnActive]}
               >
-                <Text style={[styles.modalTabText, authTab === 'signup' && styles.modalTabTextActive]}>Sign Up</Text>
+                <Text style={[styles.modalTabHeaderText, authTab === 'signup' && styles.modalTabHeaderTextActive]}>Sign Up</Text>
               </TouchableOpacity>
             </View>
 
-            {authError ? <Text style={styles.errorAlertText}>{authError}</Text> : null}
-            {authSuccess ? <Text style={styles.successAlertText}>{authSuccess}</Text> : null}
+            {authError ? <Text style={styles.modalErrorAlert}>{authError}</Text> : null}
+            {authSuccess ? <Text style={styles.modalSuccessAlert}>{authSuccess}</Text> : null}
 
             {authTab === 'signin' ? (
-              /* SIGN IN */
-              <View style={{ gap: 14 }}>
-                <Text style={styles.fieldLabel}>Username, Email, or Phone</Text>
-                <View style={styles.inputContainer}>
+              /* SIGN IN FORM VIEW */
+              <View style={{ gap: 12 }}>
+                <Text style={styles.modalInputLabel}>Username, Email, or Phone</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={loginInput}
                     onChangeText={setLoginInput}
-                    placeholder="e.g., mentalathlete"
-                    placeholderTextColor="#555570"
-                    style={styles.input}
+                    placeholder="Username / Email / Phone"
+                    placeholderTextColor="#55556a"
+                    style={styles.modalTextInput}
                     autoCapitalize="none"
                   />
                 </View>
 
-                <Text style={styles.fieldLabel}>Password</Text>
-                <View style={styles.inputContainer}>
+                <Text style={styles.modalInputLabel}>Password</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={loginPassword}
                     onChangeText={setLoginPassword}
                     placeholder="••••••••"
-                    placeholderTextColor="#555570"
+                    placeholderTextColor="#55556a"
                     secureTextEntry={!showPassword}
-                    style={styles.input}
+                    style={styles.modalTextInput}
                     autoCapitalize="none"
                   />
-                  <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(!showPassword)}>
+                  <TouchableOpacity style={styles.modalEyeBtn} onPress={() => setShowPassword(!showPassword)}>
                     {showPassword ? <EyeOff size={16} color="#9ca3af" /> : <Eye size={16} color="#9ca3af" />}
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleLogin}>
-                  <Text style={styles.modalSubmitBtnText}>Sign In</Text>
+                <TouchableOpacity style={styles.modalActionButton} onPress={handleLogin}>
+                  <Text style={styles.modalActionButtonText}>Sign In</Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              /* SIGN UP */
-              <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 12 }}>
-                <Text style={styles.fieldLabel}>Username</Text>
-                <View style={styles.inputContainer}>
+              /* SIGN UP FORM VIEW */
+              <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ gap: 12 }} showsVerticalScrollIndicator={false}>
+                <Text style={styles.modalInputLabel}>Username</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={signupUsername}
                     onChangeText={setSignupUsername}
-                    placeholder="e.g., mentalathlete"
-                    placeholderTextColor="#555570"
-                    style={styles.input}
+                    placeholder="e.g. mentalathlete"
+                    placeholderTextColor="#55556a"
+                    style={styles.modalTextInput}
                     autoCapitalize="none"
                   />
                 </View>
 
-                <Text style={styles.fieldLabel}>Email Address</Text>
-                <View style={styles.inputContainer}>
+                <Text style={styles.modalInputLabel}>Email Address</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={signupEmail}
                     onChangeText={setSignupEmail}
                     placeholder="username@gmail.com"
-                    placeholderTextColor="#555570"
-                    style={styles.input}
+                    placeholderTextColor="#55556a"
+                    style={styles.modalTextInput}
                     autoCapitalize="none"
                     keyboardType="email-address"
                   />
                 </View>
 
-                <Text style={styles.fieldLabel}>Phone Number</Text>
-                <View style={styles.inputContainer}>
+                <Text style={styles.modalInputLabel}>Phone Number</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={signupPhone}
                     onChangeText={setSignupPhone}
-                    placeholder="+91 99999 99999"
-                    placeholderTextColor="#555570"
-                    style={styles.input}
+                    placeholder="e.g. +91 99999 99999"
+                    placeholderTextColor="#55556a"
+                    style={styles.modalTextInput}
                     keyboardType="phone-pad"
                   />
                 </View>
 
-                <Text style={styles.fieldLabel}>Password</Text>
-                <View style={styles.inputContainer}>
+                <Text style={styles.modalInputLabel}>Password</Text>
+                <View style={styles.modalTextInputBox}>
                   <TextInput
                     value={signupPassword}
                     onChangeText={setSignupPassword}
                     placeholder="••••••••"
-                    placeholderTextColor="#555570"
+                    placeholderTextColor="#55556a"
                     secureTextEntry={!showPassword}
-                    style={styles.input}
+                    style={styles.modalTextInput}
                     autoCapitalize="none"
                   />
-                  <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(!showPassword)}>
+                  <TouchableOpacity style={styles.modalEyeBtn} onPress={() => setShowPassword(!showPassword)}>
                     {showPassword ? <EyeOff size={16} color="#9ca3af" /> : <Eye size={16} color="#9ca3af" />}
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleSignup}>
-                  <Text style={styles.modalSubmitBtnText}>Create Account</Text>
+                <TouchableOpacity style={styles.modalActionButton} onPress={handleSignup}>
+                  <Text style={styles.modalActionButtonText}>Create Account</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
           </View>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 }
 
-// Styling system matching dark space obsidian aesthetics
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1195,37 +1443,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1f1f2e',
+    borderBottomColor: '#1a1a26',
+    backgroundColor: '#0d0d12',
   },
   logo: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#fff',
     letterSpacing: -0.5,
   },
-  headerWidgets: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  badge: {
+  streakIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 20,
-  },
-  streakBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderColor: 'rgba(245, 158, 11, 0.25)',
   },
   streakText: {
     color: '#f59e0b',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 12,
   },
   logoutBtn: {
@@ -1246,84 +1493,150 @@ const styles = StyleSheet.create({
   },
   signInBtnText: {
     color: '#0d0d12',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 12,
+  },
+  contentContainer: {
+    flex: 1, // Let scroll content occupy remaining space above tab bar
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 24, // Normal padding since bottom navigation is an independent layout sibling
   },
-  tabContent: {
+  tabWrapper: {
     gap: 16,
   },
-  welcomeBanner: {
-    marginBottom: 8,
+  welcomeCard: {
+    marginBottom: 4,
   },
-  welcomeTitle: {
+  welcomeText: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#fff',
     marginBottom: 4,
   },
-  welcomeSub: {
+  welcomeSubtext: {
     color: '#9ca3af',
     fontSize: 13,
     lineHeight: 18,
   },
-  card: {
+  lockOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+    backgroundColor: 'rgba(13, 13, 18, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+  },
+  lockCard: {
+    backgroundColor: '#13131c',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  lockCardTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  lockCardDesc: {
+    color: '#9ca3af',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 20,
+  },
+  lockCardBtn: {
+    backgroundColor: 'rgb(139, 92, 246)',
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  lockCardBtnText: {
+    color: '#0d0d12',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  panelCard: {
+    backgroundColor: '#13131c',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
+    padding: 20,
+    marginBottom: 12,
+  },
+  ringCard: {
     backgroundColor: '#13131c',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#1f1f2e',
     padding: 20,
     marginBottom: 16,
-  },
-  progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  progressCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
+  ringLeft: {
+    flex: 1,
+    paddingRight: 12,
   },
-  progressCardDesc: {
+  ringCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  ringCardDesc: {
     color: '#9ca3af',
     fontSize: 12,
     lineHeight: 16,
     marginBottom: 12,
   },
-  progressRemaining: {
+  ringTimeStats: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 13,
   },
-  ringContainer: {
+  ringOuter: {
+    width: 140,
+    height: 140,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 110,
-    height: 110,
   },
-  ringTextContainer: {
+  ringSvg: {
+    transform: [{ rotate: '-90deg' }],
+  },
+  ringTextOverlay: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ringPercentText: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '900',
     color: '#fff',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  statsGrid: {
+  metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
     marginBottom: 16,
   },
-  statMiniCard: {
+  metricCard: {
     flex: 1,
     minWidth: '45%',
     backgroundColor: '#13131c',
@@ -1331,26 +1644,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1f1f2e',
     padding: 14,
-    gap: 4,
+    gap: 2,
   },
-  statValText: {
+  metricValue: {
     fontSize: 18,
     fontWeight: '800',
     color: '#fff',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  statLabelText: {
+  metricLabel: {
     color: '#9ca3af',
     fontSize: 11,
     fontWeight: '600',
   },
-  cardSectionTitle: {
+  panelCardTitle: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#fff',
     marginBottom: 12,
   },
-  workoutItem: {
+  sessionListItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1358,197 +1671,142 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1f1f2e',
   },
-  workoutTitle: {
+  sessionName: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 13,
     textTransform: 'capitalize',
   },
-  workoutDate: {
+  sessionDate: {
     color: '#9ca3af',
     fontSize: 11,
   },
-  workoutAccuracy: {
+  sessionAcc: {
     color: '#10b981',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  emptyText: {
-    color: '#9ca3af',
-    textAlign: 'center',
-    padding: 12,
-    fontSize: 13,
-  },
-  lockedOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 10,
-    backgroundColor: 'rgba(13, 13, 18, 0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-  },
-  lockedCard: {
-    backgroundColor: '#13131c',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    width: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 10,
-  },
-  lockedTitle: {
-    color: '#fff',
-    fontSize: 16,
     fontWeight: '800',
-    marginBottom: 8,
-  },
-  lockedDesc: {
-    color: '#9ca3af',
-    textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 20,
-  },
-  lockedBtn: {
-    backgroundColor: 'rgb(139, 92, 246)',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  lockedBtnText: {
-    color: '#0d0d12',
-    fontWeight: '700',
     fontSize: 13,
   },
-  cardHeaderTitle: {
+  emptySessionText: {
+    color: '#9ca3af',
+    textAlign: 'center',
+    paddingVertical: 12,
+    fontSize: 13,
+  },
+  panelTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: '#fff',
     marginBottom: 16,
   },
-  modeTabs: {
+  tabSelectGroup: {
     flexDirection: 'row',
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     borderRadius: 8,
     padding: 3,
     marginBottom: 16,
   },
-  modeTabButton: {
+  tabSelectBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 6,
     alignItems: 'center',
   },
-  modeTabActive: {
+  tabSelectBtnActive: {
     backgroundColor: 'rgb(139, 92, 246)',
   },
-  modeTabText: {
+  tabSelectText: {
     color: '#9ca3af',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'capitalize',
   },
-  modeTabTextActive: {
+  tabSelectTextActive: {
     color: '#0d0d12',
   },
-  fieldLabel: {
+  fieldSectionLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#9ca3af',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
   },
-  operationGrid: {
+  opSelectionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
   },
-  opSelector: {
+  opItem: {
     width: '22%',
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  opSelectorActive: {
+  opItemActive: {
     borderColor: 'rgb(139, 92, 246)',
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
   },
-  opSelectorText: {
+  opItemText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  opSelectorTextActive: {
+  opItemTextActive: {
     color: 'rgb(139, 92, 246)',
   },
-  diffTabs: {
+  difficultyRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 16,
   },
-  diffTabButton: {
+  diffBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  diffTabActive: {
+  diffBtnActive: {
     borderColor: 'rgb(139, 92, 246)',
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
   },
-  diffTabText: {
+  diffBtnText: {
     color: '#9ca3af',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'capitalize',
   },
-  diffTabTextActive: {
+  diffBtnTextActive: {
     color: 'rgb(139, 92, 246)',
   },
-  descText: {
+  drillDescription: {
     color: '#9ca3af',
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 20,
   },
-  startBtn: {
+  primaryActionBtn: {
     backgroundColor: 'rgb(139, 92, 246)',
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
-    shadowColor: 'rgb(139, 92, 246)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
   },
-  startBtnText: {
+  primaryActionBtnText: {
     color: '#0d0d12',
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 15,
   },
-  arenaActiveCard: {
-    minHeight: 400,
+  arenaActivePanel: {
+    minHeight: 450,
     justifyContent: 'space-between',
   },
-  arenaHeaderRow: {
+  arenaActiveHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1556,225 +1814,218 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1f1f2e',
     paddingBottom: 10,
   },
-  arenaSubtitle: {
+  arenaHeadingLabel: {
     color: '#9ca3af',
     fontSize: 10,
     textTransform: 'uppercase',
-    fontWeight: '700',
-  },
-  arenaTimer: {
-    fontSize: 22,
     fontWeight: '800',
+  },
+  arenaCountdownText: {
+    fontSize: 22,
+    fontWeight: '900',
     color: '#fff',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     marginTop: 4,
   },
-  timerAlert: {
-    color: '#ef4444',
-  },
-  statsLabel: {
+  statsHeaderText: {
     color: '#9ca3af',
     fontSize: 11,
     fontWeight: '600',
   },
-  equationContainer: {
+  arenaEquationWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    paddingVertical: 12,
-    gap: 12,
+    paddingVertical: 20,
+    gap: 16,
   },
-  equationText: {
-    fontSize: 28,
-    fontWeight: '800',
+  equationMainText: {
+    fontSize: 32,
+    fontWeight: '900',
     color: '#fff',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  textCorrect: {
-    color: '#10b981',
-  },
-  textIncorrect: {
-    color: '#ef4444',
-  },
-  inputFieldBox: {
-    backgroundColor: '#1f1f2e',
+  equationAnswerInputBox: {
+    backgroundColor: '#1a1a26',
     borderWidth: 2,
-    borderColor: '#373750',
+    borderColor: '#37374f',
     borderRadius: 8,
     paddingVertical: 8,
-    paddingHorizontal: 20,
-    minWidth: 120,
+    paddingHorizontal: 24,
+    minWidth: 140,
     alignItems: 'center',
   },
-  inputFieldText: {
+  equationAnswerInputText: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  fieldCorrect: {
-    borderColor: '#10b981',
+  keypadLayout: {
+    marginTop: 10,
+    gap: 8,
   },
-  fieldIncorrect: {
-    borderColor: '#ef4444',
-  },
-  keypadContainer: {
+  keypadRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    justifyContent: 'center',
-    marginTop: 12,
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  keypadKey: {
-    width: '31%',
-    backgroundColor: '#1f1f2e',
+  keypadBtn: {
+    flex: 1,
+    backgroundColor: '#1a1a26',
     borderWidth: 1,
-    borderColor: '#373750',
+    borderColor: '#37374f',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keypadKeyText: {
+  keypadBtnText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  keypadSpecial: {
+  keypadSpecialBtn: {
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  keypadSubmit: {
+  keypadSubmitBtn: {
     backgroundColor: 'rgb(139, 92, 246)',
     borderColor: 'rgb(139, 92, 246)',
   },
-  resultsTitle: {
+  resultsPanelTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#fff',
     textAlign: 'center',
     marginBottom: 16,
   },
-  resultsGrid: {
+  resultsMetricGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 20,
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     borderRadius: 12,
     paddingVertical: 12,
   },
-  resultCol: {
+  resultsMetricCol: {
     alignItems: 'center',
   },
-  resultValue: {
+  resultsMetricValue: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  resultLabel: {
+  resultsMetricLabel: {
     color: '#9ca3af',
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
   },
-  mistakesHeading: {
+  mistakeBlockHeader: {
     color: '#ef4444',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 8,
   },
-  mistakeRow: {
+  mistakeReviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#1f1f2e',
   },
-  mistakeQuestion: {
+  mistakeReviewQuestion: {
     color: '#fff',
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  mistakeUserAnswer: {
+  mistakeReviewWrongAns: {
     color: '#ef4444',
     fontSize: 12,
   },
-  tricksTitle: {
+  tricksHeadingTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  trickHeader: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '900',
     color: '#fff',
     marginBottom: 4,
   },
-  trickDesc: {
+  tricksHeadingSub: {
     color: '#9ca3af',
     fontSize: 12,
     lineHeight: 16,
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  trickExample: {
-    color: 'rgb(139, 92, 246)',
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  fractionRow: {
+  trickOverviewCard: {
+    backgroundColor: '#13131c',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
+    padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4,
+    marginBottom: 12,
   },
-  fractionText: {
+  trickOverviewTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  trickOverviewDesc: {
     color: '#9ca3af',
     fontSize: 12,
-    flex: 1,
+    lineHeight: 16,
+    marginBottom: 6,
   },
-  goalCounter: {
+  trickOverviewExample: {
+    color: 'rgb(139, 92, 246)',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  goalControllerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     borderRadius: 8,
     padding: 6,
     marginBottom: 16,
   },
-  counterBtn: {
+  goalBtn: {
     width: 36,
     height: 36,
     borderRadius: 6,
-    backgroundColor: '#373750',
+    backgroundColor: '#37374f',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  counterBtnText: {
+  goalBtnText: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  counterVal: {
+  goalValueText: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 14,
   },
-  settingSwitchRow: {
+  settingToggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
   },
-  switchLabel: {
+  settingToggleTitle: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 13,
   },
-  switchDesc: {
+  settingToggleDesc: {
     color: '#9ca3af',
     fontSize: 10,
     marginTop: 2,
@@ -1786,12 +2037,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  saveBtnText: {
-    color: '#0d0d12',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  dangerBtn: {
+  dangerActionBtn: {
     borderColor: 'rgba(239, 68, 68, 0.4)',
     borderWidth: 1,
     paddingVertical: 12,
@@ -1799,45 +2045,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(239, 68, 68, 0.05)',
   },
-  dangerBtnText: {
+  dangerActionBtnText: {
     color: '#ef4444',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 13,
   },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+  bottomTabBar: {
     backgroundColor: '#13131c',
     borderTopWidth: 1,
     borderTopColor: '#1f1f2e',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 10,
-    zIndex: 100,
+    paddingVertical: 8,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 8, // Handle iOS bottom safe area spacing!
   },
-  navButton: {
+  tabBarBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
     gap: 4,
   },
-  navButtonText: {
+  tabBarBtnText: {
     color: '#9ca3af',
     fontSize: 10,
     fontWeight: '600',
   },
-  navActiveText: {
+  tabBarBtnTextActive: {
     color: 'rgb(139, 92, 246)',
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  modalBackdrop: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0,0,0,0.82)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   modalCard: {
     backgroundColor: '#13131c',
@@ -1849,36 +2091,37 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     position: 'relative',
   },
-  closeModalBtn: {
+  closeLoginModalBtn: {
     position: 'absolute',
     top: 16,
     right: 16,
+    zIndex: 10,
   },
-  modalTabs: {
+  modalTabHeader: {
     flexDirection: 'row',
-    backgroundColor: '#1f1f2e',
+    backgroundColor: '#1a1a26',
     borderRadius: 8,
     padding: 3,
     marginBottom: 20,
   },
-  modalTabBtn: {
+  modalTabHeaderBtn: {
     flex: 1,
     paddingVertical: 8,
     alignItems: 'center',
     borderRadius: 6,
   },
-  modalTabActive: {
+  modalTabHeaderBtnActive: {
     backgroundColor: 'rgb(139, 92, 246)',
   },
-  modalTabText: {
+  modalTabHeaderText: {
     color: '#9ca3af',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  modalTabTextActive: {
+  modalTabHeaderTextActive: {
     color: '#0d0d12',
   },
-  errorAlertText: {
+  modalErrorAlert: {
     color: '#ef4444',
     backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderColor: '#ef4444',
@@ -1888,9 +2131,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginBottom: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  successAlertText: {
+  modalSuccessAlert: {
     color: '#10b981',
     backgroundColor: 'rgba(16, 185, 129, 0.08)',
     borderColor: '#10b981',
@@ -1900,37 +2143,111 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginBottom: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  inputContainer: {
-    backgroundColor: '#1f1f2e',
+  modalInputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  modalTextInputBox: {
+    backgroundColor: '#1a1a26',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#373750',
+    borderColor: '#37374f',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
   },
-  input: {
+  modalTextInput: {
     flex: 1,
     color: '#fff',
     paddingVertical: 10,
     fontSize: 13,
     fontWeight: '600',
   },
-  eyeBtn: {
+  modalEyeBtn: {
     padding: 4,
   },
-  modalSubmitBtn: {
+  modalActionButton: {
     backgroundColor: 'rgb(139, 92, 246)',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
   },
-  modalSubmitBtnText: {
+  modalActionButtonText: {
     color: '#0d0d12',
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 14,
+  },
+  closeLoginModalBtnText: {
+    color: '#fff',
+  },
+  textRed: {
+    color: '#ef4444',
+  },
+  textGreen: {
+    color: '#10b981',
+  },
+  borderGreen: {
+    borderColor: '#10b981',
+  },
+  borderRed: {
+    borderColor: '#ef4444',
+  },
+  trickPracticeCard: {
+    width: '100%',
+    maxWidth: 380,
+    position: 'relative',
+  },
+  closeTrickModalBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
+  trickPracticeTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 4,
+    paddingRight: 24,
+  },
+  trickPracticeSub: {
+    color: '#9ca3af',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  trickStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#1a1a26',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 12,
+  },
+  trickStatsText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trickQuestionArea: {
+    alignItems: 'center',
+    marginVertical: 16,
+    gap: 12,
+  },
+  fractionRow: {
+    flexDirection: 'row',
+    paddingVertical: 4,
+  },
+  fractionText: {
+    color: '#9ca3af',
+    fontSize: 12,
+    flex: 1,
   },
 });

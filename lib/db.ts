@@ -31,13 +31,12 @@ export interface MistakeQuestion {
   timestamp: string;
 }
 
-// Read Connection String from environment or Fallback to the user's provided Neon Database URL
 const connectionString = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_fyw63CcHjIdo@ep-silent-lake-auyqw55e-pooler.c-10.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
 const pool = new Pool({
   connectionString,
   ssl: {
-    rejectUnauthorized: false // Required for serverless database environments
+    rejectUnauthorized: false
   }
 });
 
@@ -48,7 +47,7 @@ async function ensureTables() {
   if (tablesInitialized) return;
   const client = await pool.connect();
   try {
-    // Create necessary database tables sequentially
+    // Create base tables
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         username VARCHAR(100) PRIMARY KEY,
@@ -56,6 +55,12 @@ async function ensureTables() {
         daily_goal_minutes INT NOT NULL DEFAULT 10,
         sound_enabled BOOLEAN NOT NULL DEFAULT TRUE
       );
+    `);
+
+    // Add email and phone columns to users if they do not exist
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) UNIQUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50) UNIQUE;
     `);
     
     await client.query(`
@@ -104,26 +109,68 @@ async function ensureTables() {
 }
 
 export class DB {
-  // Validate or Register a user with their password
-  static async authenticateUser(username: string, passwordAttempt: string): Promise<{ success: boolean; error?: string }> {
+  // Sign Up / Account Registration
+  static async registerUser(username: string, email: string, phone: string, password: string): Promise<{ success: boolean; error?: string }> {
     await ensureTables();
-    const key = username.trim();
-    if (!key) return { success: false, error: 'Username cannot be blank.' };
+    const uname = username.trim();
+    const mail = email.trim().toLowerCase();
+    const ph = phone.trim();
 
-    const res = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [key]);
+    if (!uname || !mail || !ph || !password) {
+      return { success: false, error: 'All fields (Username, Email, Phone, and Password) are required.' };
+    }
+
+    // Verify username availability
+    const nameCheck = await pool.query('SELECT username FROM users WHERE LOWER(username) = LOWER($1)', [uname]);
+    if (nameCheck.rows.length > 0) {
+      return { success: false, error: 'Username is already taken.' };
+    }
+
+    // Verify email availability
+    const emailCheck = await pool.query('SELECT username FROM users WHERE LOWER(email) = LOWER($1)', [mail]);
+    if (emailCheck.rows.length > 0) {
+      return { success: false, error: 'Email address is already registered.' };
+    }
+
+    // Verify phone availability
+    const phoneCheck = await pool.query('SELECT username FROM users WHERE phone = $1', [ph]);
+    if (phoneCheck.rows.length > 0) {
+      return { success: false, error: 'Phone number is already registered.' };
+    }
+
+    // Insert new user profile
+    await pool.query(
+      'INSERT INTO users (username, email, phone, password, daily_goal_minutes, sound_enabled) VALUES ($1, $2, $3, $4, 10, TRUE)',
+      [uname, mail, ph, password]
+    );
+
+    return { success: true };
+  }
+
+  // Sign In: validates credentials via Username, Email, OR Phone Number
+  static async authenticateUser(loginInput: string, passwordAttempt: string): Promise<{ success: boolean; username?: string; error?: string }> {
+    await ensureTables();
+    const key = loginInput.trim();
+    if (!key || !passwordAttempt) {
+      return { success: false, error: 'Identity input and password are required.' };
+    }
+
+    // Search by username, email, or phone
+    const res = await pool.query(
+      `SELECT * FROM users 
+       WHERE LOWER(username) = LOWER($1) 
+          OR LOWER(email) = LOWER($2) 
+          OR phone = $3`,
+      [key, key.toLowerCase(), key]
+    );
     
     if (res.rows.length === 0) {
-      // Auto-register user with password credentials
-      await pool.query(
-        'INSERT INTO users (username, password, daily_goal_minutes, sound_enabled) VALUES ($1, $2, 10, TRUE)',
-        [key, passwordAttempt]
-      );
-      return { success: true };
+      return { success: false, error: 'Account not found. Please verify your credentials or register a new profile.' };
     }
 
     const user = res.rows[0];
     if (user.password === passwordAttempt) {
-      return { success: true };
+      return { success: true, username: user.username };
     } else {
       return { success: false, error: 'Incorrect password for this username. Please try again.' };
     }
@@ -335,7 +382,6 @@ export class DB {
 
     const progressMap: Record<string, { date: string; minutesSpent: number; goalAchieved: boolean }> = {};
     progressRes.rows.forEach(row => {
-      // Postgres DATE type parses as local Date object or string
       const dateString = row.date instanceof Date 
         ? row.date.toLocaleDateString('sv-SE') 
         : String(row.date).split('T')[0] || '';
@@ -346,7 +392,7 @@ export class DB {
       };
     });
 
-    const todayStr = clientDate || new Date().toISOString().split('T')[0] || '';
+    const todayStr = clientDate || new Date().toISOString().split('T')[0];
 
     // Streak logic
     let currentStreak = 0;
@@ -374,10 +420,9 @@ export class DB {
     if (progressMap[todayCheckStr]?.goalAchieved) {
       // Start checking from today
     } else if (progressMap[yesterdayCheckStr]?.goalAchieved) {
-      // Check starting from yesterday (if today's goal isn't met yet)
+      // Check starting from yesterday
       checkDate.setDate(checkDate.getDate() - 1);
     } else {
-      // No active streak
       checkDate = null;
     }
 

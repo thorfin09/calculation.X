@@ -341,3 +341,83 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+/* Dashboard Mobile Responsiveness */
+@media (max-width: 580px) {
+  .welcomeSection {
+    margin-bottom: 20px !important;
+    gap: 16px !important;
+  }
+  
+  .welcomeText h1 {
+    font-size: 1.7rem !important;
+  }
+  
+  .welcomeText p {
+    font-size: 0.95rem !important;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+    margin-bottom: 20px !important;
+  }
+
+  .statCard {
+    padding: 14px !important;
+    height: 105px !important;
+  }
+
+  .statValue {
+    font-size: 1.35rem !important;
+  }
+
+  .streakCalendarCard {
+    padding: 16px !important;
+    margin-bottom: 20px !important;
+  }
+
+  .chartContainer {
+    height: 200px !important;
+  }
+
+  .sessionItem {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding: 12px 16px !important;
+  }
+
+  .sessionStats {
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  .sessionStat {
+    align-items: flex-start !important;
+  }
+
+  /* Scale SVG progress ring dynamically */
+  .focusRingContainer {
+    width: 140px !important;
+    height: 140px !important;
+  }
+  
+  .focusRingContainer svg {
+    width: 140px !important;
+    height: 140px !important;
+  }
+  
+  .focusRingContainer circle {
+    cx: 70 !important;
+    cy: 70 !important;
+    r: 58 !important;
+    stroke-width: 10 !important;
+  }
+  
+  .focusRingLabel {
+    transform: scale(0.8) !important;
+  }
+}
+

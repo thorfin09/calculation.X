@@ -12,7 +12,8 @@ import {
   Vibration,
   ActivityIndicator,
   Switch,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Svg, { Circle } from 'react-native-svg';
@@ -40,7 +41,8 @@ import {
   Volume2,
   VolumeX,
   Play,
-  Check
+  Check,
+  LogOut
 } from 'lucide-react-native';
 import { API } from './lib/api';
 

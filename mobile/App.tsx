@@ -97,7 +97,7 @@ const OPERATIONS = [
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'arena' | 'tricks' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'arena' | 'tricks' | 'settings'>('arena');
   
   // Auth states
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -117,6 +117,18 @@ export default function App() {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string>('');
   const [authSuccess, setAuthSuccess] = useState<string>('');
+
+  // Guest stats & session storage states
+  const [guestSessions, setGuestSessions] = useState<any[]>([]);
+  const [guestStats, setGuestStats] = useState<any>({
+    sessions: [],
+    totalSessions: 0,
+    totalQuestions: 0,
+    totalCorrect: 0,
+    averageAccuracy: 0,
+    averageSpeed: 0,
+    totalTimeMin: 0
+  });
 
   // Dashboard states
   const [dashboardStats, setDashboardStats] = useState<any>(null);
@@ -565,7 +577,47 @@ export default function App() {
         operation: a.operation
       }));
 
-    if (!isLoggedIn || username === 'Guest') return;
+    if (!isLoggedIn || username === 'Guest') {
+      const newSession = {
+        id: Math.random().toString(36).substring(2, 9),
+        operation: drillMode === 'workout' ? 'mix' : chosenOp,
+        correctCount,
+        totalQuestions: solvedCount,
+        durationSeconds,
+        averageTimePerQuestionMs: avgTimePerQuestionMs,
+        timestamp: new Date().toISOString()
+      };
+
+      setGuestSessions((prev) => [newSession, ...prev]);
+
+      setGuestStats((prev: any) => {
+        const nextSessions = [newSession, ...prev.sessions];
+        let qTotal = 0;
+        let cTotal = 0;
+        let sTotal = 0;
+
+        nextSessions.forEach((s) => {
+          qTotal += s.totalQuestions;
+          cTotal += s.correctCount;
+          sTotal += s.durationSeconds;
+        });
+
+        const accuracy = qTotal > 0 ? (cTotal / qTotal) * 100 : 0;
+        const totalTimeMin = parseFloat((sTotal / 60).toFixed(1));
+        const speed = sTotal > 0 ? (qTotal / (sTotal / 60)) : 0;
+
+        return {
+          sessions: nextSessions,
+          totalSessions: nextSessions.length,
+          totalQuestions: qTotal,
+          totalCorrect: cTotal,
+          averageAccuracy: parseFloat(accuracy.toFixed(1)),
+          averageSpeed: parseFloat(speed.toFixed(1)),
+          totalTimeMin
+        };
+      });
+      return;
+    }
 
     try {
       await API.addSession(username, {
@@ -727,8 +779,14 @@ export default function App() {
   const radius = 68;
   const strokeWidth = 12;
   const circumference = 2 * Math.PI * radius;
-  const percentComplete = dashboardStats ? Math.min(100, Math.round((dashboardStats.minutesToday / dashboardStats.user?.dailyGoalMinutes) * 100)) : 0;
+  const percentComplete = isLoggedIn && dashboardStats 
+    ? Math.min(100, Math.round((dashboardStats.minutesToday / dashboardStats.user?.dailyGoalMinutes) * 100)) 
+    : Math.min(100, Math.round((guestStats.totalTimeMin / settingsGoal) * 100));
   const strokeDashoffset = circumference * (1 - percentComplete / 100);
+
+  // Resolve active stats source
+  const stats = isLoggedIn ? dashboardStats : guestStats;
+  const sessions = isLoggedIn ? (dashboardStats?.recentSessions || []) : guestSessions;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -774,111 +832,105 @@ export default function App() {
                 <Text style={styles.welcomeSubtext}>
                   {isLoggedIn 
                     ? 'Invest 10 minutes today to boost your calculation speeds.'
-                    : 'Train freely in guest mode. Sign in to log errors and save session analytics!'
+                    : 'Train freely. Create an account to sync streaks and save your metrics!'
                   }
                 </Text>
               </View>
 
-              <View style={{ position: 'relative' }}>
-                {!isLoggedIn && (
-                  <View style={styles.lockOverlay}>
-                    <View style={styles.lockCard}>
-                      <Key size={30} color="rgb(139, 92, 246)" style={{ marginBottom: 12 }} />
-                      <Text style={styles.lockCardTitle}>Premium Dashboard Locked</Text>
-                      <Text style={styles.lockCardDesc}>
-                        Sign in to track progress rings, logs, mistakes reviewer, and training histories.
-                      </Text>
-                      <TouchableOpacity style={styles.lockCardBtn} onPress={() => setShowLoginModal(true)}>
-                        <Text style={styles.lockCardBtnText}>Sign In / Create Account</Text>
-                      </TouchableOpacity>
-                    </View>
+              {!isLoggedIn && (
+                <View style={styles.syncBanner}>
+                  <Brain size={20} color="rgb(139, 92, 246)" />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.syncBannerTitle}>Sync Your Achievements</Text>
+                    <Text style={styles.syncBannerText}>Sign in to save your daily streak and error log to your profile.</Text>
                   </View>
-                )}
+                  <TouchableOpacity style={styles.syncBannerBtn} onPress={() => setShowLoginModal(true)}>
+                    <Text style={styles.syncBannerBtnText}>Sign In</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-                <View style={{ opacity: isLoggedIn ? 1 : 0.4 }}>
-                  {/* Circular Progress Ring */}
-                  <View style={styles.ringCard}>
-                    <View style={styles.ringLeft}>
-                      <Text style={styles.ringCardTitle}>Daily Progress</Text>
-                      <Text style={styles.ringCardDesc}>
-                        Accumulate 10 minutes of math drills daily to build your quantitative memory.
-                      </Text>
-                      {dashboardStats && (
-                        <Text style={styles.ringTimeStats}>
-                          Today: {dashboardStats.minutesToday}m / {dashboardStats.user?.dailyGoalMinutes}m
-                        </Text>
-                      )}
-                    </View>
-
-                    <View style={styles.ringOuter}>
-                      <Svg width="140" height="140" style={styles.ringSvg}>
-                        <Circle
-                          cx="70"
-                          cy="70"
-                          r={radius}
-                          stroke="#1a1a26"
-                          strokeWidth={strokeWidth}
-                          fill="transparent"
-                        />
-                        <Circle
-                          cx="70"
-                          cy="70"
-                          r={radius}
-                          stroke="rgb(139, 92, 246)"
-                          strokeWidth={strokeWidth}
-                          fill="transparent"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={strokeDashoffset}
-                          strokeLinecap="round"
-                        />
-                      </Svg>
-                      <View style={styles.ringTextOverlay}>
-                        <Text style={styles.ringPercentText}>{percentComplete}%</Text>
-                      </View>
-                    </View>
+              <View>
+                {/* Circular Progress Ring */}
+                <View style={styles.ringCard}>
+                  <View style={styles.ringLeft}>
+                    <Text style={styles.ringCardTitle}>Daily Progress</Text>
+                    <Text style={styles.ringCardDesc}>
+                      Accumulate {isLoggedIn ? (dashboardStats?.user?.dailyGoalMinutes || 10) : settingsGoal} minutes of math drills daily to build your quantitative memory.
+                    </Text>
+                    <Text style={styles.ringTimeStats}>
+                      Today: {isLoggedIn ? (dashboardStats?.minutesToday || 0) : guestStats.totalTimeMin}m / {isLoggedIn ? (dashboardStats?.user?.dailyGoalMinutes || 10) : settingsGoal}m
+                    </Text>
                   </View>
 
-                  {/* Solved metrics grid */}
-                  <View style={styles.metricsGrid}>
-                    <View style={styles.metricCard}>
-                      <Target size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
-                      <Text style={styles.metricValue}>{dashboardStats?.averageAccuracy || 0}%</Text>
-                      <Text style={styles.metricLabel}>Accuracy</Text>
-                    </View>
-                    <View style={styles.metricCard}>
-                      <Zap size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
-                      <Text style={styles.metricValue}>{dashboardStats?.averageSpeed || 0} Q/m</Text>
-                      <Text style={styles.metricLabel}>Speed</Text>
-                    </View>
-                    <View style={styles.metricCard}>
-                      <CheckCircle2 size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
-                      <Text style={styles.metricValue}>{dashboardStats?.totalCorrect || 0}</Text>
-                      <Text style={styles.metricLabel}>Solved</Text>
-                    </View>
-                    <View style={styles.metricCard}>
-                      <Clock size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
-                      <Text style={styles.metricValue}>{dashboardStats?.totalTimeMin || 0}m</Text>
-                      <Text style={styles.metricLabel}>Trained</Text>
+                  <View style={styles.ringOuter}>
+                    <Svg width="140" height="140" style={styles.ringSvg}>
+                      <Circle
+                        cx="70"
+                        cy="70"
+                        r={radius}
+                        stroke="#1a1a26"
+                        strokeWidth={strokeWidth}
+                        fill="transparent"
+                      />
+                      <Circle
+                        cx="70"
+                        cy="70"
+                        r={radius}
+                        stroke="rgb(139, 92, 246)"
+                        strokeWidth={strokeWidth}
+                        fill="transparent"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={strokeDashoffset}
+                        strokeLinecap="round"
+                      />
+                    </Svg>
+                    <View style={styles.ringTextOverlay}>
+                      <Text style={styles.ringPercentText}>{percentComplete}%</Text>
                     </View>
                   </View>
+                </View>
 
-                  {/* Recent Workouts list */}
-                  <View style={styles.panelCard}>
-                    <Text style={styles.panelCardTitle}>Recent Session History</Text>
-                    {dashboardStats && dashboardStats.recentSessions?.length > 0 ? (
-                      dashboardStats.recentSessions.map((session: any, idx: number) => (
-                        <View key={session.id || idx} style={styles.sessionListItem}>
-                          <View>
-                            <Text style={styles.sessionName}>{session.operation} session</Text>
-                            <Text style={styles.sessionDate}>Solved {session.totalQuestions} questions</Text>
-                          </View>
-                          <Text style={styles.sessionAcc}>{Math.round((session.correctCount / session.totalQuestions) * 100)}% Acc</Text>
+                {/* Solved metrics grid */}
+                <View style={styles.metricsGrid}>
+                  <View style={styles.metricCard}>
+                    <Target size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                    <Text style={styles.metricValue}>{stats?.averageAccuracy || 0}%</Text>
+                    <Text style={styles.metricLabel}>Accuracy</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Zap size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                    <Text style={styles.metricValue}>{stats?.averageSpeed || 0} Q/m</Text>
+                    <Text style={styles.metricLabel}>Speed</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <CheckCircle2 size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                    <Text style={styles.metricValue}>{isLoggedIn ? (stats?.totalCorrect || 0) : (stats?.totalQuestions || 0)}</Text>
+                    <Text style={styles.metricLabel}>Solved</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Clock size={18} color="rgb(139, 92, 246)" style={{ marginBottom: 4 }} />
+                    <Text style={styles.metricValue}>{stats?.totalTimeMin || 0}m</Text>
+                    <Text style={styles.metricLabel}>Trained</Text>
+                  </View>
+                </View>
+
+                {/* Recent Workouts list */}
+                <View style={styles.panelCard}>
+                  <Text style={styles.panelCardTitle}>Recent Session History</Text>
+                  {sessions.length > 0 ? (
+                    sessions.map((session: any, idx: number) => (
+                      <View key={session.id || idx} style={styles.sessionListItem}>
+                        <View>
+                          <Text style={styles.sessionName}>{session.operation} session</Text>
+                          <Text style={styles.sessionDate}>Solved {session.totalQuestions} questions</Text>
                         </View>
-                      ))
-                    ) : (
-                      <Text style={styles.emptySessionText}>No logged session history found.</Text>
-                    )}
-                  </View>
+                        <Text style={styles.sessionAcc}>{Math.round((session.correctCount / session.totalQuestions) * 100)}% Acc</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptySessionText}>No logged session history found.</Text>
+                  )}
                 </View>
               </View>
 
@@ -1444,6 +1496,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    paddingTop: Platform.OS === 'android' ? 40 : 12, // Clears Android status bar overlaps
     borderBottomWidth: 1,
     borderBottomColor: '#1a1a26',
     backgroundColor: '#0d0d12',
@@ -1497,11 +1550,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   contentContainer: {
-    flex: 1, // Let scroll content occupy remaining space above tab bar
+    flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 24, // Normal padding since bottom navigation is an independent layout sibling
+    paddingBottom: 120, // Increased bottom padding to slide content above floating dock
   },
   tabWrapper: {
     gap: 16,
@@ -1520,55 +1573,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  lockOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 10,
-    backgroundColor: 'rgba(13, 13, 18, 0.5)',
+  syncBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-  },
-  lockCard: {
-    backgroundColor: '#13131c',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    width: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 8,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
-  lockCardTitle: {
+  syncBannerTitle: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
-    marginBottom: 8,
+    marginBottom: 2,
   },
-  lockCardDesc: {
+  syncBannerText: {
     color: '#9ca3af',
-    textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 20,
+    fontSize: 11,
+    lineHeight: 15,
   },
-  lockCardBtn: {
+  syncBannerBtn: {
     backgroundColor: 'rgb(139, 92, 246)',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginLeft: 8,
   },
-  lockCardBtnText: {
+  syncBannerBtnText: {
     color: '#0d0d12',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 11,
   },
   panelCard: {
     backgroundColor: '#13131c',
@@ -1628,7 +1664,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
     color: '#fff',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   metricsGrid: {
     flexDirection: 'row',
@@ -1650,7 +1686,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#fff',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   metricLabel: {
     color: '#9ca3af',
@@ -1824,7 +1860,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: '#fff',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
     marginTop: 4,
   },
   statsHeaderText: {
@@ -1843,7 +1879,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '900',
     color: '#fff',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   equationAnswerInputBox: {
     backgroundColor: '#1a1a26',
@@ -1859,7 +1895,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 24,
     fontWeight: '900',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   keypadLayout: {
     marginTop: 10,
@@ -1884,7 +1920,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   keypadSpecialBtn: {
     backgroundColor: 'rgba(255,255,255,0.06)',
@@ -1915,7 +1951,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '900',
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   resultsMetricLabel: {
     color: '#9ca3af',
@@ -1939,7 +1975,7 @@ const styles = StyleSheet.create({
   mistakeReviewQuestion: {
     color: '#fff',
     fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
   mistakeReviewWrongAns: {
     color: '#ef4444',
@@ -2051,13 +2087,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   bottomTabBar: {
-    backgroundColor: '#13131c',
-    borderTopWidth: 1,
-    borderTopColor: '#1f1f2e',
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 28 : 16, // Clear iOS Home Indicator notch overlaps!
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(19, 19, 28, 0.95)',
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
+    borderRadius: 24,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8, // Handle iOS bottom safe area spacing!
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
   tabBarBtn: {
     alignItems: 'center',
@@ -2251,3 +2296,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
